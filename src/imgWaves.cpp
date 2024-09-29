@@ -1,7 +1,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <getopt.h>
-#include <ImageMagick-7/Magick++.h>
+#include <Magick++.h>
 
 void printHelp(){
   std::cout<< "help massage" << std::endl;
@@ -49,6 +49,9 @@ int main (int argc, char *argv[]) {
         exit(0);
     }
   }
+  Magick::InitializeMagick(*argv);
+  Magick::Image myImage;
+
   std::cout<< "mass: " << mass <<std::endl;
 
  
