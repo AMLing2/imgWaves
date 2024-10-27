@@ -1,1 +1,0 @@
-g++ `Magick++-config --cxxflags --cppflags` -O2 -Wall -o test imgWaves.cpp `Magick++-config --ldflags --libs`
