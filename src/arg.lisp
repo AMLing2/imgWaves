@@ -18,4 +18,5 @@
                   ((string= arg "R") (print "hello R"))
                   )))))) ;;it veeerks
 ;;TODO: would be cool to make parseArgs a macro instead, where i can simply drop in (cond ...)
+;;TODO: add --text options, should be a really easy implementation :D
 (parseArgs)
