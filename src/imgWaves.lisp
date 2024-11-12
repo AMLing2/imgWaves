@@ -44,90 +44,59 @@
 (defvar img-size (list (imago::image-width in-Image) (imago::image-height in-Image)))
 (print img-size)
 
-;;;;i dont think this is the most optimal way for this, should probably try rewriting soon
-(defun linePoints (cx cy a imgsize);;;get image endpoints of a line based on rad angle and center x y 
-  (let ((cutoff (atan (/ (nth 1 imgsize) (nth 0 imgsize)))))
-    (cond ((and (< a cutoff) (> a (- cutoff)))
-           (list 0 (+ cy (* (- cx (nth 0 imgsize)) (tan a))))) ;;left 
-          ((and (> a cutoff) (< a (+ pi cutoff)))
-           (list (+ cx (* (- cy (nth 1 imgsize)) (- (tan (- a pi))))) 0)) ;;top
-          ((and (< a (- cutoff)) (> a (- (+ pi cutoff)))) 
-           (list (+ cx (* (- cy (nth 1 imgsize)) (tan (- a pi)))) (nth 1 imgsize))) ;;bottom
-          ((or (> a (+ pi cutoff)) (< a (- (+ pi cutoff)))) 
-           (list (nth 0 imgsize) (+ cy (* (- cx (nth 0 imgsize)) (tan a))))) ;;right
-          (t (print "helo")) ;;same angle as cutoff
-    )))
-;;;get item by index: (nth [index] [list])
+;;get item by index: (nth [index] [list])
 
 
 (defun flipPoints (x1 y1 x2 y2)
   (list x2 y2 x1 y1))
+(defun degtorad (deg) 
+  (* deg (/ pi 180)))
+(degtorad 80)
 
 ;;;; this function should return ONLY start points (list x1 y1) as well as no jump going from a = 89 to 90
 
 (defun line-x (cx cy a y)
   (+ cx (* (tan (+ a (/ pi 2))) 
            (- y cy))))
+
 (defun line-y (cx cy a x) ;y = tan(a)*x + b, b = cy, x = cx - x
   (+ cy (* (tan a) 
            (- cx x))))
-(defun linepoints3 (cx cy a imgsize) ;;no error thrown on (tan 90), so use htis then check if OOB
-  (let ((xval)) ;replace this form with let*
-  (let ((y (if (and (< a (/ pi 2))
-                    (> a (- (/ pi 2))))  
+
+(defun on-right-side? (a) (or 
+                            (and (<= a (/ pi 2)) ;;find if on right side
+                                 (>= a (- (/ pi 2))))
+                            (> a (/ (* pi 3) 2))
+                            (< a (- (/ (* pi 3) 2))))) ;;wont work outside of [-2*pi to 2*pi]
+
+(defun linepoints (cx cy a imgsize) ;;no error thrown on (tan 90), so use htis then check if OOB
+  (let* ((xval) (y (if (on-right-side? a)
                (prog1 ;prog1 returns first and runs both expr
-                   (line-y cx cy a (first imgsize))
-                 (setq xval (first imgsize))) ; right
-             (prog1 
-                 (line-y cx cy a 0.0)
-               (setq xval 0.0))))); left
+                   (line-y cx cy a (first imgsize)) ;right
+                 (setq xval (first imgsize)))
+              (prog1 
+                 (line-y cx cy a 0.0) ;left
+               (setq xval 0.0)))))
     (cond
       ((and (<= y (nth 1 imgsize))
             (>= y 0.0)) 
-       (prog1 (list xval y)
-         (print "left / right"))) ;;left or right, works
+       (list xval y)) ;left / right
       ((> y (nth 1 imgsize)) 
-       (prog1 (list (line-x cx cy a (nth 1 imgsize)) (nth 1 imgsize))
-         (print y))) ;;; bot, wrong
+        (list (line-x cx cy a (nth 1 imgsize)) (nth 1 imgsize))) ; bottom
       ((< y 0.0) 
-       (prog1 (list (line-x cx cy a 0.0) 0.0) 
-         (print y))))))) ;;; top, works
+       (list (line-x cx cy a 0.0) 0.0))))) ;top
 
-(linepoints3 300 300 (degtorad 360) (list 600 600))
-
-(defun linepoints3-test (ang-add)
+(defun linepoints-test (ang-add)
   (let ((ang 0))
-  (loop while (<= ang (* 2 pi))
+  (loop while (and (<= ang (* 2 pi)) (>= ang (- (* 2 pi))))
         do (prog1
-               (print (linepoints3 300 300 ang (list 600 600))) 
+               (print ang)
+             (print (linepoints 200 200 ang (list 600 600)))
              (setf ang (+ ang ang-add))))))
 
-(linepoints3-test 0.05)
+(linepoints-test 0.05)
 
-(defun linepoints2 (cx cy a imgsize) ;;no error thrown on (tan 90), so use htis then check if OOB
-  (let ((y (+ cy (* (tan a)
-                    (* -1
-                       (- (/ (first imgsize) 2 )
-                           (- (/ (first imgsize) 2) cx))))))) ;;;b = y - tan(a)*x
-    (let ((outp (cond
-               ((and (<= y (nth 1 imgsize)) (>= y 0.0)) 
-                (list 0.0 y)) ;;left
-               ((> y (nth 1 imgsize)) 
-                (list (+ (* (tan a)) (/ (nth 1 imgsize) 2)) (nth 1 imgsize))) ;;; bot
-               ((< y 0.0) 
-                (list (+ (* (tan a)) (/ (nth 1 imgsize) 2)) 0.0)) ;;; top
-               (t 
-                (list (first imgsize) y))))) ;;; right
-      (if (outp > pi ) (flipPoints a) (a))))) ;;;TODO: make for negative angles also (can convert to -a)
-;;(defun linepoints2 (cx cy a imgsize) ;;no error thrown on (tan 90), so use htis then check if OOB
-;;  (let ((y (+ cy (* (tan a) (- (/ (first imgsize) 2 )))))) ;;;b = y - tan(a)*x
-;;        (print y)))
-
-(defun degtorad (deg) 
-  (* deg (/ pi 180)))
-(degtorad 80)
-
-(linePoints (/ (nth 0 img-size) 2) (/ (nth 1 img-size) 2) 0.8726646 img-size)
+(print (linepoints 200 200 (/ pi 2) (list 600 600))) ; upside down?
 
 (defvar myimage (imago:make-rgb-image 100 100 
   (imago:make-color 255 0 0 255)))
