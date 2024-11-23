@@ -86,15 +86,42 @@
       ((< y 0.0) 
        (list (line-x cx cy a 0.0) 0.0))))) ;top
 
-(defun linepoints-test (ang-add)
+(defun linepoints-test (ang-add) ;;TODO: remove 
   (let ((ang 0))
   (loop while (and (<= ang (* 2 pi)) (>= ang (- (* 2 pi))))
         do (prog1
                (print ang)
              (print (linepoints 200 200 ang (list 600 600)))
              (setf ang (+ ang ang-add))))))
-
 (linepoints-test 0.05)
+
+(defun start-end-points (a imgsize) ;no cx cy for now, add if needed
+  (list (linepoints (/ (first imgsize) 2) (/ (second imgsize) 2) a imgsize)
+        (linepoints (/ (first imgsize) 2) (/ (second imgsize) 2) (+ a pi) imgsize)))
+
+(defun dist-between-points (p)
+  (sqrt (+ (expt (- (first (second p))
+                    (first (first p))) 2)
+           (expt (- (second (second p))
+                    (second (first p))) 2))))
+
+(defun gen-start-points (line-num a offset imgsize)  ;;TODO: add offset
+  (let* ((ang (+ a (/ pi 2)))
+         (p (start-end-points ang imgsize))
+         (dist-x (/ (- (first (second p))
+                   (first (first p))) (+ line-num 1)))
+         (dist-y (/ (- (second (second p))
+                   (second (first p))) (+ line-num 1))))
+    (loop for l from 1 to line-num by 1
+          collect (linepoints (+ (* dist-x l)
+                           (first (first p))) 
+                         (+ (* dist-y l)
+                            (second (first p)))
+                         a
+                         imgsize))))
+
+(gen-start-points 5 (degtorad (+ 20)) 0 (list 600 600))
+
 
 (print (linepoints 200 200 (/ pi 2) (list 600 600))) ; upside down?
 
