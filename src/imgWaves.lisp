@@ -86,6 +86,23 @@
       ((< y 0.0) 
        (list (line-x cx cy a 0.0) 0.0))))) ;top
 
+(defun linepoints-r (cx cy a imgsize) ;;a rounded version of linepoints, mavbe remove prev
+  (let* ((xval) (y (if (on-right-side? a)
+               (prog1 ;prog1 returns first and runs both expr
+                   (line-y cx cy a (first imgsize)) ;right
+                 (setq xval (first imgsize)))
+              (prog1 
+                 (line-y cx cy a 0.0) ;left
+               (setq xval 0.0)))))
+    (cond
+      ((and (<= y (nth 1 imgsize))
+            (>= y 0.0)) 
+       (list (round xval) (round y))) ;left / right
+      ((> y (nth 1 imgsize)) 
+        (list (round (line-x cx cy a (nth 1 imgsize))) (round (nth 1 imgsize)))) ; bottom
+      ((< y 0.0) 
+       (list (round (line-x cx cy a 0.0)) 0))))) ;top
+
 (defun linepoints-test (ang-add) ;;TODO: remove 
   (let ((ang 0))
   (loop while (and (<= ang (* 2 pi)) (>= ang (- (* 2 pi))))
@@ -98,6 +115,10 @@
 (defun start-end-points (a imgsize) ;no cx cy for now, add if needed
   (list (linepoints (/ (first imgsize) 2) (/ (second imgsize) 2) a imgsize)
         (linepoints (/ (first imgsize) 2) (/ (second imgsize) 2) (+ a pi) imgsize)))
+
+(defun start-end-points2 (cx cy a imgsize) ;with cx cy
+  (list (linepoints-r cx cy a imgsize)
+        (linepoints-r cx cy (+ a pi) imgsize)))
 
 (defun dist-between-points (p)
   (sqrt (+ (expt (- (first (second p))
@@ -113,25 +134,28 @@
          (dist-y (/ (- (second (second p))
                    (second (first p))) (+ line-num 1))))
     (loop for l from 1 to line-num by 1
-          collect (linepoints (+ (* dist-x l)
+          collect (start-end-points2 (+ (* dist-x l)
                            (first (first p))) 
                          (+ (* dist-y l)
                             (second (first p)))
                          a
                          imgsize))))
 
-(gen-start-points 5 (degtorad (+ 20)) 0 (list 600 600))
+;; Image processing:
 
+(defun drawpoints (point-list image)
+  (dolist (p point-list)
+    (prog1 (imago:draw-circle image (first (first p)) (second (first p)) 10 imago:+red+)
+      (imago:draw-circle image (first (second p)) (second (second p)) 10 imago:+blue+))))
 
-(print (linepoints 200 200 (/ pi 2) (list 600 600))) ; upside down?
+(setq myimage2 (imago:make-rgb-image 600 600 imago:+white+))
+(drawpoints (gen-start-points 15 (degtorad 45) 0 (list (imago:image-width myimage2)
+                                          (imago:image-height myimage2))) myimage2)
 
-(defvar myimage (imago:make-rgb-image 100 100 
-  (imago:make-color 255 0 0 255)))
+(imago:write-png myimage2 "hello.png"); should write to current path...
 
-(imago:do-region-pixels (myimage color x y 25 25 50 50)
-  (setf color (imago:make-color 0 0 255 127)))
-
-(imago:write-png myimage "hello.png")
+;(imago:do-region-pixels (myimage color x y 25 25 50 50)
+;  (setf color (imago:make-color 0 0 255 127)))
 
 ;(defvar myimage (imago:read-image "~/Pictures/finn/ascent2.jpg"))
 
