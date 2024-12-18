@@ -39,6 +39,8 @@
 ;;; -s = size of output image WWWWxHHHH, may be difficult to implement, low priority 
 ;;; -d = [top,bottom,middle,outer] pattern to draw lines in
 ;;; -C = collision of lines, not sure on inputs yet, either spring or dampener coeff or both
+;;; -I = invert
+
 
 (defvar in-Image (imago::read-image "~/Documents/projects/imgWaves/src/test.png"))
 (defvar img-size (list (imago::image-width in-Image) (imago::image-height in-Image)))
@@ -143,10 +145,79 @@
 
 ;; Image processing:
 
-(defun drawpoints (point-list image)
+(defun add-gain (g up? index line) ;; destructve modifiicaation of line list
+  (let ((ind-move (if up? 1 -1))
+        (cnt 0))
+    (loop for g-add from 1 to 0 by (/ 1 g)
+          do (progn (setq cnt (+ cnt ind-move))
+              (if (or (> (+ index cnt) (list-length line))
+                     (< (+ index cnt) 0))
+                 (break)
+                 (if (> (nth (+ index cnt) line) g-add)
+                     (break)
+                     (setf (nth (+ index cnt) line) g-add)))))))
+
+(defun apply-gain-list (g up? index-list line)
+  (dolist (i index-list)
+    (add-gain g up? i line)))
+
+(defun find-color-jumps (grayscale-line) ;TODO:continue, err test it now i guess
+  (let ((prev (first grayscale-line))
+        (current)
+        (index-list nil))
+    (loop for i from 1 to (- (length grayscale-line) 1) by 1
+          do (prog1 (setq current (nth i grayscale-line))
+               (cond ((= prev current)
+                    (setq prev (nth i grayscale-line))) ; goes up
+                     ((> (- prev current) 0)
+                      (push '(i 1) index-list)) ;adds item to front but does not matter in this context
+                     (T
+                      (push '(i 0) index-list))) ; goes down
+               (setq prev current)))))
+
+;find-color-jumps test, temp
+(defun find-color-jumps-test ()
+  (let ((test-list (make-list 200 :initial-element 0)))
+    (loop for i from 120 to 160 by 1
+          do (setq (nth i test-list) 255))
+    (print (find-color-jumps test-list))))
+
+(defvar cummy (make-list 200 :initial-element 0))
+; end
+
+(defun make-gain-line (g image line-point) 
+  (let ((g-list nil))
+    (imago:do-line-pixels (image color x y (first (first line-point))
+                                 (second (first line-point))
+                                 (first (second line-point))
+                                 (second (second line-point)))
+      (push color g-list)) ;should be ANDed with #x00FF?
+    (setq g-list (reverse g-list))
+    ())) ; continue here with find-color-jumps and apply-gain-list
+;; image:
+
+(defun gray-pixel (image x y)
+  (logand (imago:image-pixel image x y) #x00FF))
+
+(defun drawpoints (point-list image) ;is this a temporary test?
   (dolist (p point-list)
     (prog1 (imago:draw-circle image (first (first p)) (second (first p)) 10 imago:+red+)
       (imago:draw-circle image (first (second p)) (second (second p)) 10 imago:+blue+))))
+
+
+;;image tests:
+
+(defun import-binary-image (location) ;; not using 
+    (defvar (imago:convert-to-binary ((imago:read-image "./test.png") 10))))
+
+(defvar gray-image (imago:invert (imago:convert-to-grayscale ;use something like this
+                     (imago:read-image "~/Documents/projects/imgWaves/src/test.png"))))
+
+(print (gray-pixel gray-image 150 150))
+
+(imago:write-png gray-image "~/Documents/projects/imgWaves/bin.png")
+(import-binary-image 1)
+
 
 (setq myimage2 (imago:make-rgb-image 600 600 imago:+white+))
 (drawpoints (gen-start-points 15 (degtorad 45) 0 (list (imago:image-width myimage2)
