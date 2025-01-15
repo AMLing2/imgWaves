@@ -229,7 +229,7 @@
     (let ((out-line nil)) ;input line-func with #'[func-name]
       (loop for i from 0 to (- (length gain-line) 1) by 1
             do (push (funcall line-func ;g n x
-                              (nth i gain-line)
+                              (/ (nth i gain-line) 255);normalize g to 0-1
                               line-num
                               i)
                      out-line))
@@ -260,10 +260,20 @@
 ;NOTE: way to do this!!!! create a relative x,y line with the wave pattern, then with imago drawline, use the x,y of current pixel + relative x,y after some angle conversion to draw the pixel or filled circle
 
 (defun x-func-add (old-x func-val angle) ;func-val acts as len for a new vector
-  (round (+ old-x (* func-val (cos (+ angle (/ pi 2)))))))
+  (round (+ old-x (* func-val (- (sin angle))))))
 (defun y-func-add (old-y func-val angle)
-  (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))
-
+  (round (+ old-y (* func-val (- (cos angle))))))
+(defun x-func-add (old-x func-val angle) ;func-val acts as len for a new vector
+  (prog1 (round (+ old-x (* func-val (cos (+ angle (/ pi 2))))))
+    (when (/= func-val 0) (print (list "old-x:" old-x "func-val:" func-val "angle:" angle
+                                       "out:" (round (+ old-x (* func-val (cos (+ angle (/ pi 2)))))))))))
+;tests:
+old-x
+(defun y-func-add (old-y func-val angle)
+  (prog1 (round (+ old-y (* func-val (sin (+ angle (/ pi 2))))))
+    (when (/= func-val 0) (print (list "old-y:" old-y "func-val:" func-val "angle:" angle
+                                       "out:" (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))))))
+(x-func-add 127 -8.487476 0.7853981633974483)
 (defun draw-func-line (image line-points relative-shape-line angle
                              line-thickness line-color)
   (let ((i 0))
@@ -293,27 +303,25 @@
     (dolist (p line-points)
       (prog1 
       (draw-func-line new-img p
-                      (create-relative-line-static2 line-func 
+                      (create-relative-line-static line-func 
                                                     (make-gain-line-linear gain
                                                                            base-img
                                                                            p)
                                                     line-index)
-                      angle line-thickness line-color)
+                      (degtorad angle) line-thickness line-color)
       (incf line-index)))))
 
 ;PERF: TEST OF MAIN LOOP:
-(defun temp-sine-wave (g n x) ;normalize g
-  (round (* g (+ 1 (/ n 30)) 10 (sin (* x 0.1)))))
-(main-loop gray-image myimage2 15 45 0 20 #'temp-sine-wave 3 imago:+black+)
+(defun temp-sine-wave (g n x)
+  (* g (+ 1 (/ n 10)) 2 (sin (* x 0.3))))
+(defun no-wave (g n x)
+  (* g 10))
+(defun sawtooth-wave (g n x) ;normalize g
+  (* g (mod x 20) 1))
+ 
+(main-loop gray-image myimage2 50 45 0 20 #'temp-sine-wave 1 imago:+black+)
+(setq myimage2 (imago:make-rgb-image 300 300 imago:+white+))
 (imago:write-png myimage2 "~/Documents/projects/imgWaves/out.png")
-
-(defun gainline-test (g image angle line-num) ;FIX: REMOVE HERE NOW
-  (let* ((imgsize (list (imago:image-width image)
-                        (imago:image-height image)))
-         (line-points (gen-start-points line-num (degtorad angle) 0 imgsize)))
-  (print line-points)
-  (print "a")
-  (print (make-gain-line-linear g image (first line-points)))))
 
 (defun img-waves (func) ;;main TODO: do later
   ())
@@ -368,7 +376,7 @@
 ;(defvar gray-image (imago:invert (imago:convert-to-grayscale ;use something like this
 ;                     (imago:read-image "~/Documents/projects/imgWaves/src/test.png"))))
 (setq gray-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/src/test_i.png")))
+                     (imago:read-image "~/Documents/projects/imgWaves/src/test_i2.png")))
 
 (print (gray-pixel gray-image 150 150))
 
