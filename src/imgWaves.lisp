@@ -21,7 +21,7 @@
               ((string-equal (first arg-list) "-b") (print "hello b"))
               ))))
 
-;;; TODO: what i want options to do, delete from list as they get added
+;;; NOTE: what i want options to do, delete from list as they get added
 ;;; -m = mass
 ;;; -x = function in x direction (relative)
 ;;; -y = function in y dir
@@ -41,6 +41,13 @@
 ;;; -C = collision of lines, not sure on inputs yet, either spring or dampener coeff or both
 ;;; -I = invert
 
+;;;NOTE: how the user will interract with the program:
+;  1 - write a file with the desired wave function then run:
+;    imgwaves -f /path/file.lisp -i /path/image.png -arg1 -arg2... in the terminal
+;  2 - write a file with the desired wave func then in the file run:
+;    (imgwaves-arg *FUNC* *image* *args*...)
+;  3 - run in terminal with no other args to open a REPL with choosable options:
+;    imgwaves -i /path/image
 
 (defvar in-Image (imago::read-image "~/Documents/projects/imgWaves/src/test.png"))
 (defvar img-size (list (imago::image-width in-Image) (imago::image-height in-Image)))
@@ -151,7 +158,8 @@
 
 ;;;;; Image processing - adding gain:
 (gainline-test 5 gray-image 45 1) ;PERF: test here
-(defun add-gain (g up? index line) ;; destructve modifiicaation of line list
+
+(defun add-gain (g up? index line) ; destructve modification of line list
   (let ((ind-move (if up? 1 -1)) ;finished?
         (cnt 0))
     (loop for g-add downfrom 255 to 0 by g ;FIX: replace 255 -> (nth index line)?
@@ -182,14 +190,14 @@
     (values index-list)))
 
 ;find-color-jumps test, temp
-(defun find-color-jumps-test () ;TODO: test, finished?
+(defun find-color-jumps-test () ;finished i think
   (let ((test-list (fill (make-list 200 :initial-element 0)
                          255 :start 120 :end 160)))
 ; if &KEY, this means you need to use :name to fill in the variables as they are
     (print (find-color-jumps test-list))))
 (find-color-jumps-test)
 
-(defun make-gain-line (g image line-point) ;TODO: test
+(defun make-gain-line-linear (g image line-point) ;finished? rename in the future maybe
   (let ((g-list nil))
     (imago:do-line-pixels (image color x y ;if 300x300 image then 0->299
                                  (first (first line-point))   ;x1
@@ -197,38 +205,160 @@
                                  (first (second line-point))  ;x2
                                  (second (second line-point)));y2
       (push (logand color #x00FF) g-list)) ;should be ANDed with #x00FF?
-    (print g-list)
-    (apply-gain-list g ;FIX: test
+    ;(print g-list) ;remove
+    (apply-gain-list g
                      (find-color-jumps g-list) ; this line works
                      g-list); dont reverse, dosent seem to be destructive..
     (values (reverse g-list))))                 ;a double reverse that might work well?
 
 
-(defun gain-of-lines (g image line-points) ; create a gain for all lines
-  ())
+(defun gain-of-lines (g image line-points linear?) ;create a gain for all lines,
+                                           ;separate with linear/smooth here?
+;FIX: having a list of gain-lists will probably not work, maybe it should complete one line at a time completely, with drawing and everything before moving to the next one, hopefully this wont cause issues in the future but it shouldnt i guess. Abondoning this function and method for now.
+  (let ((out-list nil))
+  (if linear?
+      (dolist (points line-points)
+        (push (make-gain-line-linear g image points)
+              out-list))
+      (nil)) ;non-linear/smooth gain todo in the future
+    (values out-list)))
+
+;;;;; creating and reading shape for relative line:
+
+(defun create-relative-line-static (line-func gain-line line-num) ;no idea what to call this function
+    (let ((out-line nil)) ;input line-func with #'[func-name]
+      (loop for i from 0 to (- (length gain-line) 1) by 1
+            do (push (funcall line-func ;g n x
+                              (nth i gain-line)
+                              line-num
+                              i)
+                     out-line))
+      (values out-line)))
+
+(defun create-relative-line-static2 (line-func gain-line line-num)
+      (loop for i from 0 to (- (length gain-line) 1) by 1
+            collect (funcall line-func ;g n x
+                              (/ (nth i gain-line) 255);normalize g to 0-1
+                              line-num
+                              i)))
+
+(defun str-test (c d) ;;FIX: abondining str method for now, will ahve user create a function in a separate file or REPL probably
+  (flet ((f (a b)
+           (read-from-string "(+ a b)")))
+    (f c d)))
+
 ;;;;; image:
+;;HACK: redo this function, good idea but leaves a lot of artifacts
+(defun draw-filled-circle (image x y r color)
+  (prog1 (imago:draw-point image x y color) ;fill in center point
+    (loop for ri downfrom r to 1 by 1 
+          do (imago:draw-circle image x y ri color))))
 
 (defun gray-pixel (image x y)
   (logand (imago:image-pixel image x y) #x00FF))
 
+;NOTE: way to do this!!!! create a relative x,y line with the wave pattern, then with imago drawline, use the x,y of current pixel + relative x,y after some angle conversion to draw the pixel or filled circle
+
+(defun x-func-add (old-x func-val angle) ;func-val acts as len for a new vector
+  (round (+ old-x (* func-val (cos (+ angle (/ pi 2)))))))
+(defun y-func-add (old-y func-val angle)
+  (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))
+
+(defun draw-func-line (image line-points relative-shape-line angle
+                             line-thickness line-color)
+  (let ((i 0))
+  (imago:do-line-pixels (image color x y 
+                               (first (first line-points));x1
+                               (second (first line-points));y1
+                               (first (second line-points))
+                               (second (second line-points)))
+    (prog1
+    (draw-filled-circle image
+                        (x-func-add x (nth i relative-shape-line) angle)
+                        (y-func-add y (nth i relative-shape-line) angle)
+                        line-thickness
+                        line-color)
+    (incf i)))))
+
+;putting it all together
+(defun main-loop (base-img new-img num-lines angle offset gain
+                           line-func line-thickness line-color)
+  (let* ((imgsize (list (imago:image-width base-img)
+                        (imago:image-height base-img)))
+         (line-points (gen-start-points num-lines
+                                        (degtorad angle)
+                                        offset 
+                                        imgsize))
+         (line-index 0))
+    (dolist (p line-points)
+      (prog1 
+      (draw-func-line new-img p
+                      (create-relative-line-static2 line-func 
+                                                    (make-gain-line-linear gain
+                                                                           base-img
+                                                                           p)
+                                                    line-index)
+                      angle line-thickness line-color)
+      (incf line-index)))))
+
+;PERF: TEST OF MAIN LOOP:
+(defun temp-sine-wave (g n x) ;normalize g
+  (round (* g (+ 1 (/ n 30)) 10 (sin (* x 0.1)))))
+(main-loop gray-image myimage2 15 45 0 20 #'temp-sine-wave 3 imago:+black+)
+(imago:write-png myimage2 "~/Documents/projects/imgWaves/out.png")
+
+(defun gainline-test (g image angle line-num) ;FIX: REMOVE HERE NOW
+  (let* ((imgsize (list (imago:image-width image)
+                        (imago:image-height image)))
+         (line-points (gen-start-points line-num (degtorad angle) 0 imgsize)))
+  (print line-points)
+  (print "a")
+  (print (make-gain-line-linear g image (first line-points)))))
+
+(defun img-waves (func) ;;main TODO: do later
+  ())
+
 ;;image tests:
 ;NOTE: all of this will be moved later
+
+(defun drawpoints-filled (point-list image)
+  (dolist (p point-list)
+    (prog1 (draw-filled-circle image (first (first p)) (second (first p)) 20 imago:+red+)
+      (draw-filled-circle image (first (second p)) (second (second p)) 20 imago:+blue+))))
 
 (defun drawpoints (point-list image)
   (dolist (p point-list)
     (prog1 (imago:draw-circle image (first (first p)) (second (first p)) 10 imago:+red+)
       (imago:draw-circle image (first (second p)) (second (second p)) 10 imago:+blue+))))
 
-(setq myimage2 (imago:make-rgb-image 600 600 imago:+white+))
-(drawpoints (gen-start-points 15 (degtorad 45) 0 (list (imago:image-width myimage2)
-                                          (imago:image-height myimage2))) myimage2)
+(defun draw-straight-lines (point-list image)
+  (dolist (p point-list)
+    (imago:draw-line image (first (first p)) (second (first p))
+                     (first (second p)) (second (second p))
+                     imago:+black+)))
+;drawing lines and points test:
+(setq myimage2 (imago:make-rgb-image 300 300 imago:+white+))
+(drawpoints-filled (gen-start-points 100
+                                     (degtorad 10)
+                                     0
+                                     (list (imago:image-width myimage2)
+                                           (imago:image-height myimage2)))
+                   myimage2)
+(draw-straight-lines (gen-start-points 100
+                                     (degtorad 10)
+                                     0
+                                     (list (imago:image-width myimage2)
+                                           (imago:image-height myimage2)))
+                   myimage2)
+(imago:write-png myimage2 "~/Documents/projects/imgWaves/out.png")
+
 (defun gainline-test (g image angle line-num) ;TODO: continue
   (let* ((imgsize (list (imago:image-width image)
                         (imago:image-height image)))
          (line-points (gen-start-points line-num (degtorad angle) 0 imgsize)))
   (print line-points)
   (print "a")
-  (print (make-gain-line g image (first line-points)))))
+  (print (make-gain-line-linear g image (first line-points)))))
 
 (defun import-binary-image (location) ;; not using, remove
     (defvar (imago:convert-to-binary ((imago:read-image "./test.png") 10))))
@@ -237,8 +367,8 @@
 ;probably easy to implement self where needed
 ;(defvar gray-image (imago:invert (imago:convert-to-grayscale ;use something like this
 ;                     (imago:read-image "~/Documents/projects/imgWaves/src/test.png"))))
-(defvar gray-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/src/test.png")))
+(setq gray-image (imago:convert-to-grayscale ;use something like this
+                     (imago:read-image "~/Documents/projects/imgWaves/src/test_i.png")))
 
 (print (gray-pixel gray-image 150 150))
 
