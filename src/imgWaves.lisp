@@ -2,18 +2,17 @@
 (ql:quickload "IMAGO")
 
 (defstruct params
-  (m 1.0 :type float)
-  (g-up 0.2 :type float)
-  (g-down 0.2 :type float)
-  (n-lines 10 :type integer)
-  (angle 0.0 :type float) ;;need to convert angle to rad, mod by 2 pi then -pi if >pi then *-1 so it is opposite
-  )
+  (g-up 10.0 :type float)
+  (g-down 10.0 :type float) ;remove?
+  (n-lines 30 :type integer)
+  (angle 0.0 :type float) ;degrees 
+  (offset 0 :type integer) ;needs to be added
+  (l-thickness 0 :type integer) ;0 = 1px
+  (l-color imago:+black+ :type imago:rgb-pixel)
+  (bg-color imago:+white+ :type imago:rgb-pixel)
+  (filename "out.png" :type string)) ;converted to pathname later
 
-(defvar Inparams (make-params))
-
-;;(print (params-m Inparams)) ;;access slots
-
-(defun parseArgs () (print *posix-argv*)
+(defun parseArgs () (print *posix-argv*) ;old
   (let ((arg-list *posix-argv*))
     (dotimes (i (- (list-length *posix-argv*) 1))
       (setq arg-list (rest arg-list)) (print arg-list)
@@ -21,32 +20,36 @@
               ((string-equal (first arg-list) "-b") (print "hello b"))
               ))))
 
-;;; NOTE: what i want options to do, delete from list as they get added
-;;; -m = mass
-;;; -x = function in x direction (relative)
-;;; -y = function in y dir
+;;; NOTE: what i want options to do, note on list as they get added
+;;; -f = y = f(t) function (relative)
 ;;; -Rr = ramp gain up/down
-;;; -f = follow preset line or follow curve
 ;;; -a = angle of lines in deg (slightly more human readable)
 ;;; -n = number of lines
-;;; -i = input image
-;;; -o = output image
-;;; -t = offset of lines in Y direction
+;;; -i / base = input image
+;;; -o = output image and filetype (png default)
+;;; -t = offset of lines in relative Y direction
 ;;; -b = background colour, hex
 ;;; -l = line colour, hex
-;;; -c = image colour, hex, this option will append the image behind the lines, will be black if no color passed
-;;; -p = user function to run before loop
-;;; -s = size of output image WWWWxHHHH, may be difficult to implement, low priority 
-;;; -d = [top,bottom,middle,outer] pattern to draw lines in
-;;; -C = collision of lines, not sure on inputs yet, either spring or dampener coeff or both
+;;; -L = line thickness, int
+;;; -c = image colour, hex, this option will append the image behind the lines, black by default
+;;; -s = size of output image WWWWxHHHH 
 ;;; -I = invert
+;;;; future: dynamic function:
+;;; -f = follow preset line or follow curve
+;;; -m = mass
+;;; -x = function in x dir
+;;; -y = function in y dir
+;;; -C = collision of lines, not sure on inputs yet, either spring or dampener coeff or both
+;;;; unsure if implementing:
+;;; -p = initial user function to run before loop
+;;; -d = [top,bottom,middle,outer] pattern to draw lines in
 
 ;;;NOTE: how the user will interract with the program:
 ;  1 - write a file with the desired wave function then run:
 ;    imgwaves -f /path/file.lisp -i /path/image.png -arg1 -arg2... in the terminal
 ;  2 - write a file with the desired wave func then in the file run:
-;    (imgwaves-arg *FUNC* *image* *args*...)
-;  3 - run in terminal with no other args to open a REPL with choosable options:
+;    (img-waves *FUNC* *image* *param-object*)
+;  3 - run in terminal with no other args to open REPL with choosable options:
 ;    imgwaves -i /path/image
 
 (defvar in-Image (imago::read-image "~/Documents/projects/imgWaves/src/test.png"))
@@ -159,6 +162,7 @@
 ;;;;; Image processing - adding gain:
 (gainline-test 5 gray-image 45 1) ;PERF: test here
 
+;TODO: fix artifact in going up here
 (defun add-gain (g up? index line) ; destructve modification of line list
   (let ((ind-move (if up? 1 -1)) ;finished?
         (cnt 0))
@@ -311,20 +315,27 @@ old-x
                       (degtorad angle) line-thickness line-color)
       (incf line-index)))))
 
-;PERF: TEST OF MAIN LOOP:
-(defun temp-sine-wave (g n x)
-  (* g (+ 1 (/ n 10)) 2 (sin (* x 0.3))))
-(defun no-wave (g n x)
-  (* g 10))
-(defun sawtooth-wave (g n x) ;normalize g
-  (* g (mod x 20) 1))
- 
-(main-loop gray-image myimage2 50 45 0 20 #'temp-sine-wave 1 imago:+black+)
-(setq myimage2 (imago:make-rgb-image 300 300 imago:+white+))
-(imago:write-png myimage2 "~/Documents/projects/imgWaves/out.png")
-
-(defun img-waves (func) ;;main TODO: do later
-  ())
+;FIX: image is flipped in the x direction, can just flip before saving
+(defun img-waves (wave-func param-obj base-img) ;;main
+  "Create a new image by run the function WAVE-FUNC over BASE-IMG with parameters"
+  (let* ((new-img (imago:make-rgb-image
+                    (imago:image-width base-img)
+                    (imago:image-height base-img)
+                    (slot-value param-obj 'bg-color)))
+         (out-file (if (char= #\/ ;check if name starts with "/"
+                              (char (slot-value param-obj 'filename) 0))
+                       (slot-value param-obj 'filename) ;write-image accepts string
+                       (merge-pathnames (truename ".") ;get current dir
+                                      (pathname (slot-value param-obj 'filename))))))
+    (main-loop base-img new-img
+               (slot-value param-obj 'n-lines)
+               (slot-value param-obj 'angle)
+               (slot-value param-obj 'offset)
+               (slot-value param-obj 'g-up);add g-down later or remove?
+               wave-func
+               (slot-value param-obj 'l-thickness)
+               (slot-value param-obj 'l-color))
+    (imago:write-image new-img out-file)))
 
 ;;image tests:
 ;NOTE: all of this will be moved later
@@ -394,4 +405,33 @@ old-x
 
 ;(imago:write-image embossed "~/Pictures/embossed.jpg")
 
+;PERF: TEST OF MAIN LOOP:
+(defun temp-sine-wave (g n x)
+  (+ (* g 20) (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
+(defun no-wave (g n x)
+  (* g 20))
+(defun sawtooth-wave (g n x) ;normalize g
+  (* g (mod x 20) 1))
+ 
+(defvar params-in (make-instance 'params))
+(img-waves #'temp-sine-wave params-in base-bg-image)
 
+(main-loop base-bg-image myimage2 80 -90 0 10 #'temp-sine-wave 4 imago:+blue+)
+(setq myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
+(imago:write-png myimage2 "~/Documents/projects/imgWaves/bgout.png")
+(defvar base-bg-image (imago:convert-to-grayscale ;use something like this
+                     (imago:read-image "~/Documents/projects/imgWaves/bg.png")))
+
+
+;silly gif test:
+(defun speeeen ()
+  (let ((outImg (imago:make-rgb-image 300 300 imago:+white+))
+        (dirname "~/Documents/projects/imgWaves/fungif/")
+        (outnum 1))
+   (loop for i from 0 to 180 by 1
+        do (prog1 (main-loop gray-image outImg 30 i 0 20 #'temp-sine-wave 1 imago:+black+)
+             (imago:write-png outImg
+                              (concatenate 'string dirname (write-to-string outnum) ".png"))
+             (setq outImg (imago:make-rgb-image 300 300 imago:+white+))
+             (incf outnum)))))
+(speeeen)
