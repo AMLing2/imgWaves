@@ -1,4 +1,3 @@
-;argparser:
 (ql:quickload "IMAGO")
 
 (defstruct params
@@ -10,15 +9,70 @@
   (l-thickness 0 :type integer) ;0 = 1px
   (l-color imago:+black+ :type imago:rgb-pixel)
   (bg-color imago:+white+ :type imago:rgb-pixel)
-  (filename "out.png" :type string)) ;converted to pathname later
+  (filename "out.png" :type string)) ;converted to pathname type later
 
-(defun parseArgs () (print *posix-argv*) ;old
-  (let ((arg-list *posix-argv*))
-    (dotimes (i (- (list-length *posix-argv*) 1))
-      (setq arg-list (rest arg-list)) (print arg-list)
-        (cond ((string-equal (first arg-list) "-i") (print "hello i"))
-              ((string-equal (first arg-list) "-b") (print "hello b"))
-              ))))
+(defun print-help ()
+  (format t "Usage: imgwaves [image file] [options]~%~%")
+  (format t "Options:~%")
+  (format t "  -R, --ramp-up <float>        Set the ramp gain up.~%")
+  (format t "  -r, --ramp-down <float>      Set the ramp gain down.~%")
+  (format t "  -a, --angle <float>          Set the angle of lines in degrees.~%")
+  (format t "  -n, --num-lines <integer>    Set the number of lines.~%")
+  (format t "  -o, --output-file <string>   Set the output image filename and filetype (default: png).~%")
+  (format t "  -t, --line-offset <integer>  Set the offset of lines in the relative Y direction.~%")
+  (format t "  -b, --background-color <hex> Set the background color in hexadecimal format.~%")
+  (format t "  -l, --line-color <hex>       Set the line color in hexadecimal format.~%")
+  (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
+  (format t "  -I                           Invert the image.~%")
+  (format t "  -h, --help                   Display this help message.~%")
+  (format t "Example:~%")
+  (format t "  imgwaves base.png -R 5.0 -a 45 -n 100 -o out.png~%"))
+
+(defmethod fill-from-args ((obj params) d-arg val)
+  (cond
+    ((or (string= d-arg "-h")
+         (string= d-arg "--help"))
+     (print-help)
+     (uiop:quit 0))
+
+    ;; Set the ramp gain up/down ('R'/'r' short, 'ramp-up'/'ramp-down' long)
+    ((or (string= d-arg "R")
+         (string= d-arg "ramp-up")) (setf (slot-value obj 'g-up) val))
+    ((or (string= d-arg "r")
+         (string= d-arg "ramp-down")) (setf (slot-value obj 'g-down) val))
+
+    ;; Set the angle of lines ('a' short, 'angle' long)
+    ((or (string= d-arg "a")
+         (string= d-arg "angle")) (setf (slot-value obj 'angle) val))
+
+    ;; Set the number of lines ('n' short, 'num-lines' long)
+    ((or (string= d-arg "n")
+         (string= d-arg "num-lines")) (setf (slot-value obj 'n-lines) val))
+
+    ;; Set the output filename ('o' short, 'output-file' long)
+    ((or (string= d-arg "o")
+         (string= d-arg "output-file")) (setf (slot-value obj 'filename) val))
+
+    ;; Set the offset of lines ('t' short, 'line-offset' long)
+    ((or (string= d-arg "t")
+         (string= d-arg "line-offset")) (setf (slot-value obj 'offset) val))
+
+    ;; Set the background color ('b' short, 'background-color' long)
+    ((or (string= d-arg "b")
+         (string= d-arg "background-color")) (setf (slot-value obj 'bg-color) val))
+
+    ;; Set the line color ('l' short, 'line-color' long)
+    ((or (string= d-arg "l")
+         (string= d-arg "line-color")) (setf (slot-value obj 'l-color) val))
+
+    ;; Set the line thickness ('L' short, 'line-thickness' long)
+    ((or (string= d-arg "L")
+         (string= d-arg "line-thickness")) (setf (slot-value obj 'l-thickness) val))
+
+    ;; Handle unknown arguments
+    (t (format t "Unknown argument provided: ~a~%" d-arg)
+       (print-help)
+       (uiop:quit 1))))
 
 ;;; NOTE: what i want options to do, note on list as they get added
 ;;; -f = y = f(t) function (relative)
@@ -46,11 +100,11 @@
 
 ;;;NOTE: how the user will interract with the program:
 ;  1 - write a file with the desired wave function then run:
-;    imgwaves -f /path/file.lisp -i /path/image.png -arg1 -arg2... in the terminal
+;    imgwaves /path/image.png -f /path/file.lisp -arg1 -arg2... in the terminal
 ;  2 - write a file with the desired wave func then in the file run:
 ;    (img-waves *FUNC* *image* *param-object*)
 ;  3 - run in terminal with no other args to open REPL with choosable options:
-;    imgwaves -i /path/image
+;    imgwaves /path/image
 
 (defvar in-Image (imago::read-image "~/Documents/projects/imgWaves/src/test.png"))
 (defvar img-size (list (imago::image-width in-Image) (imago::image-height in-Image)))
@@ -246,11 +300,6 @@
                               line-num
                               i)))
 
-(defun str-test (c d) ;;FIX: abondining str method for now, will ahve user create a function in a separate file or REPL probably
-  (flet ((f (a b)
-           (read-from-string "(+ a b)")))
-    (f c d)))
-
 ;;;;; image:
 ;;HACK: redo this function, good idea but leaves a lot of artifacts
 (defun draw-filled-circle (image x y r color)
@@ -267,17 +316,19 @@
   (round (+ old-x (* func-val (- (sin angle))))))
 (defun y-func-add (old-y func-val angle)
   (round (+ old-y (* func-val (- (cos angle))))))
-(defun x-func-add (old-x func-val angle) ;func-val acts as len for a new vector
-  (prog1 (round (+ old-x (* func-val (cos (+ angle (/ pi 2))))))
-    (when (/= func-val 0) (print (list "old-x:" old-x "func-val:" func-val "angle:" angle
-                                       "out:" (round (+ old-x (* func-val (cos (+ angle (/ pi 2)))))))))))
+
 ;tests:
-old-x
-(defun y-func-add (old-y func-val angle)
-  (prog1 (round (+ old-y (* func-val (sin (+ angle (/ pi 2))))))
-    (when (/= func-val 0) (print (list "old-y:" old-y "func-val:" func-val "angle:" angle
-                                       "out:" (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))))))
-(x-func-add 127 -8.487476 0.7853981633974483)
+; (defun x-func-add (old-x func-val angle) ;FIX: remove? func-val acts as len for a new vector
+;   (prog1 (round (+ old-x (* func-val (cos (+ angle (/ pi 2))))))
+;     (when (/= func-val 0) (print (list "old-x:" old-x "func-val:" func-val "angle:" angle
+;                                        "out:" (round (+ old-x (* func-val (cos (+ angle (/ pi 2)))))))))))
+; old-x
+; (defun y-func-add (old-y func-val angle)
+;   (prog1 (round (+ old-y (* func-val (sin (+ angle (/ pi 2))))))
+;     (when (/= func-val 0) (print (list "old-y:" old-y "func-val:" func-val "angle:" angle
+;                                        "out:" (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))))))
+; (x-func-add 127 -8.487476 0.7853981633974483)
+
 (defun draw-func-line (image line-points relative-shape-line angle
                              line-thickness line-color)
   (let ((i 0))
@@ -315,6 +366,17 @@ old-x
                       (degtorad angle) line-thickness line-color)
       (incf line-index)))))
 
+;taken from https://github.com/sbcl/sbcl/blob/master/src/code/filesys.lisp#L270
+
+(defun get-filename (filename) ;wip
+  "Get a usable path for writing the image to, default to ./out.png if bad"
+  (if (or (t)
+          (t)) (t)
+      ((if (char= #\/ (char filename 0));check if name starts with "/"
+         (pathname filename) ;use user input filename
+         (merge-pathnames (truename ".") ;get current dir
+                          (pathname filename))))))
+
 ;FIX: image is flipped in the x direction, can just flip before saving
 (defun img-waves (wave-func param-obj base-img) ;;main
   "Create a new image by run the function WAVE-FUNC over BASE-IMG with parameters"
@@ -322,11 +384,7 @@ old-x
                     (imago:image-width base-img)
                     (imago:image-height base-img)
                     (slot-value param-obj 'bg-color)))
-         (out-file (if (char= #\/ ;check if name starts with "/"
-                              (char (slot-value param-obj 'filename) 0))
-                       (slot-value param-obj 'filename) ;write-image accepts string
-                       (merge-pathnames (truename ".") ;get current dir
-                                      (pathname (slot-value param-obj 'filename))))))
+         (out-file (get-filename (slot-value param-obj 'filename))))
     (main-loop base-img new-img
                (slot-value param-obj 'n-lines)
                (slot-value param-obj 'angle)
@@ -387,7 +445,7 @@ old-x
 ;(defvar gray-image (imago:invert (imago:convert-to-grayscale ;use something like this
 ;                     (imago:read-image "~/Documents/projects/imgWaves/src/test.png"))))
 (setq gray-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/src/test_i2.png")))
+                     (imago:read-image "~/Documents/projects/imgWaves/pingus.png")))
 
 (print (gray-pixel gray-image 150 150))
 
@@ -412,7 +470,7 @@ old-x
   (* g 20))
 (defun sawtooth-wave (g n x) ;normalize g
   (* g (mod x 20) 1))
- 
+
 (defvar params-in (make-instance 'params))
 (img-waves #'temp-sine-wave params-in base-bg-image)
 
@@ -425,13 +483,13 @@ old-x
 
 ;silly gif test:
 (defun speeeen ()
-  (let ((outImg (imago:make-rgb-image 300 300 imago:+white+))
+  (let ((outImg (imago:make-rgb-image 600 600 imago:+white+))
         (dirname "~/Documents/projects/imgWaves/fungif/")
         (outnum 1))
-   (loop for i from 0 to 180 by 1
+   (loop for i from -180 to 180 by 1
         do (prog1 (main-loop gray-image outImg 30 i 0 20 #'temp-sine-wave 1 imago:+black+)
              (imago:write-png outImg
                               (concatenate 'string dirname (write-to-string outnum) ".png"))
-             (setq outImg (imago:make-rgb-image 300 300 imago:+white+))
+             (setq outImg (imago:make-rgb-image 600 600 imago:+white+))
              (incf outnum)))))
 (speeeen)
