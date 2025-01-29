@@ -197,6 +197,8 @@
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
 
+(gen-start-points-test 30 0 0 (imago:make-rgb-image 300 300 imago:+white+)) ;PERF:
+
 (defun gen-start-points (line-num a offset imgsize)  ;;TODO: add offset, use for main func
   (let* ((ang (+ a (/ pi 2)))
          (imgsizefixed (mapAdd -1 imgsize))
@@ -429,7 +431,18 @@
                    myimage2)
 (imago:write-png myimage2 "~/Documents/projects/imgWaves/out.png")
 
-(defun gainline-test (g image angle line-num) ;TODO: continue
+(defun gen-start-points-test (line-num a offset blankimg)
+  (let ((p-l (gen-start-points line-num
+                               a
+                               offset
+                               (list (imago:image-width blankimg)
+                                     (imago:image-height blankimg)))))
+    (drawpoints-filled p-l blankimg)
+    (draw-straight-lines p-l blankimg)
+    (imago:write-png blankimg "~/Documents/projects/imgWaves/out.png")))
+
+
+(defun gainline-test (g image angle line-num) ;TODO: continue?
   (let* ((imgsize (list (imago:image-width image)
                         (imago:image-height image)))
          (line-points (gen-start-points line-num (degtorad angle) 0 imgsize)))
