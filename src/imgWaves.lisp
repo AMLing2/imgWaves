@@ -23,11 +23,12 @@
   (format t "  -b, --background-color <hex> Set the background color in hexadecimal format.~%")
   (format t "  -l, --line-color <hex>       Set the line color in hexadecimal format.~%")
   (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
-  (format t "  -I                           Invert the image.~%")
+;  (format t "  -I                           Invert the image.~%")
   (format t "  -h, --help                   Display this help message.~%")
   (format t "Example:~%")
   (format t "  imgwaves base.png -R 5.0 -a 45 -n 100 -o out.png~%"))
 
+;TODO: need to convert val to int/float where neeeded, is probably string always
 (defmethod fill-from-args ((obj params) d-arg val)
   (cond
     ((or (string= d-arg "-h")
@@ -113,14 +114,23 @@
 ;;get item by index: (nth [index] [list])
 
 
-(defun flipPoints (x1 y1 x2 y2)
+(defun flipPoints (x1 y1 x2 y2) ; remove?
   (list x2 y2 x1 y1))
 (defun degtorad (deg) 
   (* deg (/ pi 180)))
-(degtorad 80)
 
-;;;; this function should return ONLY start points (list x1 y1) as well as no jump going from a = 89 to 90
+(defun clamp-ang-rad (ang)
+  "run mod 2 pi and preserve sign"
+  (let ((ang-sign (/ ang (abs ang))))
+    (* ang-sign 
+       (mod (abs ang) (* 2 pi)))))
 
+(defun get-quadrant (a) ;-2 pi to 2 pi
+  (let ((n (if (> a 0)
+              (ceiling (* 2 (/ (clamp-ang-rad a) pi)))
+              (ceiling (* 2 (/ (+ (clamp-ang-rad a) (* 2 pi)) pi))))))
+    (if (= n 0) 1 n))) ;for when a = -2pi
+;;;; this function should return ONLY start points (list x1 y1) as well as no jump going from a = 89 to 90 to 91
 (defun line-x (cx cy a y)
   (+ cx (* (tan (+ a (/ pi 2))) 
            (- y cy))))
@@ -129,29 +139,37 @@
   (+ cy (* (tan a) 
            (- cx x))))
 
-(defun on-right-side? (a) (or 
-                            (and (<= a (/ pi 2)) ;;find if on right side
-                                 (>= a (- (/ pi 2))))
-                            (> a (/ (* pi 3) 2))
-                            (< a (- (/ (* pi 3) 2))))) ;;wont work outside of [-2*pi to 2*pi]
+(defun on-right-side? (a) 
+  "check if a point following the line +x will hit the right or left side of image"
+  (or 
+    (and (<= a (/ pi 2)) ;;find if on right side
+         (>= a (- (/ pi 2))))
+    (> a (/ (* pi 3) 2))
+    (< a (- (/ (* pi 3) 2))))) ;;wont work outside of [-2*pi to 2*pi]
 
-(defun linepoints (cx cy a imgsize) ;;no error thrown on (tan 90), so use htis then check if OOB
-  (let* ((xval)
-         (y (if (on-right-side? a)
-               (prog1 ;prog1 returns first and runs both expr
-                   (line-y cx cy a (first imgsize)) ;right
-                 (setq xval (first imgsize)))
-              (prog1 
-                 (line-y cx cy a 0.0) ;left
-               (setq xval 0.0)))))
-    (cond
-      ((and (<= y (nth 1 imgsize))
-            (>= y 0.0)) 
-       (list xval y)) ;left / right
-      ((> y (nth 1 imgsize)) 
-        (list (line-x cx cy a (nth 1 imgsize)) (nth 1 imgsize))) ; bottom
-      ((< y 0.0) 
-       (list (line-x cx cy a 0.0) 0.0))))) ;top
+(defun linepoints-init (ang imgsize) ;surprisingly ang = 0 works, might add to cond
+  "get points of line of angle (A + pi/2) which intersects lines of angle A from corners"
+  ;three lines y = ax + c, y = bx + d1 (top), y = bx + d2 (bottom)
+  (cond ((= ang (degtorad (- 90))) (list (first imgsize) ; floating point comparison hurts
+                                         (/ (second imgsize) 2)))
+      ((= ang (degtorad (- 180 90))) (list 0 ;works without this but might not on all machines
+                                          (/ (second imgsize) 2)))
+      (T (let* ((ang-init (+ ang (/ pi 2)))
+                (a (tan ang-init))
+                (b (tan ang))
+                (cx (/ (first imgsize) 2))
+                (cy (- (/ (second imgsize) 2)))
+                (lq (get-quadrant ang-init))
+                (w (if (or (= lq 1) (= lq 4)) 
+                       (first imgsize) 
+                       0))
+                (h (if (or (= lq 1) (= lq 2))
+                       0
+                       (- (second imgsize)))))
+           (list (/ (- (+ h (* a cx)) cy (* b w)) ; checked
+                    (- a b))
+                 (- (/ (- (+ (* b cx) h) (* b w) (/ (* cy b) a))
+                       (- 1 (/ b a)))))))))
 
 (defun linepoints-r (cx cy a imgsize) ;;a rounded version of linepoints, mavbe remove prev
   (let* ((xval)
@@ -171,18 +189,9 @@
       ((< y 0.0) 
        (list (round (line-x cx cy a 0.0)) 0))))) ;top
 
-(defun linepoints-test (ang-add) ;;FIX: remove 
-  (let ((ang 0))
-  (loop while (and (<= ang (* 2 pi)) (>= ang (- (* 2 pi))))
-        do (prog1
-               (print ang)
-             (print (linepoints 200 200 ang (list 600 600)))
-             (setf ang (+ ang ang-add))))))
-(linepoints-test 0.05)
-
-(defun start-end-points (a imgsize) ;no cx cy for now, add if needed
-  (list (linepoints (/ (first imgsize) 2) (/ (second imgsize) 2) a imgsize)
-        (linepoints (/ (first imgsize) 2) (/ (second imgsize) 2) (+ a pi) imgsize)))
+(defun init-line-points (a imgsize)
+  (list (linepoints-init a imgsize)
+        (linepoints-init (+ a pi) imgsize)))
 
 (defun start-end-points2 (cx cy a imgsize) ;with cx cy
   (list (linepoints-r cx cy a imgsize)
@@ -197,12 +206,11 @@
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
 
-(gen-start-points-test 30 0 0 (imago:make-rgb-image 300 300 imago:+white+)) ;PERF:
+(gen-start-points-test 30 (degtorad 135) 0 (imago:make-rgb-image 500 300 imago:+white+)) ;PERF:
 
 (defun gen-start-points (line-num a offset imgsize)  ;;TODO: add offset, use for main func
-  (let* ((ang (+ a (/ pi 2)))
-         (imgsizefixed (mapAdd -1 imgsize))
-         (p (start-end-points ang imgsizefixed)) ;FIX: add -1 here or something to imgsize
+  (let* ((imgsizefixed (mapAdd -1 imgsize))
+         (p (init-line-points a imgsizefixed)) ;TODO: continue, test with -init and negatives
          (dist-x (/ (- (first (second p))
                    (first (first p))) (+ line-num 1)))
          (dist-y (/ (- (second (second p))
@@ -270,18 +278,6 @@
                      (find-color-jumps g-list) ; this line works
                      g-list); dont reverse, dosent seem to be destructive..
     (values (reverse g-list))))                 ;a double reverse that might work well?
-
-
-(defun gain-of-lines (g image line-points linear?) ;create a gain for all lines,
-                                           ;separate with linear/smooth here?
-;FIX: having a list of gain-lists will probably not work, maybe it should complete one line at a time completely, with drawing and everything before moving to the next one, hopefully this wont cause issues in the future but it shouldnt i guess. Abondoning this function and method for now.
-  (let ((out-list nil))
-  (if linear?
-      (dolist (points line-points)
-        (push (make-gain-line-linear g image points)
-              out-list))
-      (nil)) ;non-linear/smooth gain todo in the future
-    (values out-list)))
 
 ;;;;; creating and reading shape for relative line:
 
@@ -369,6 +365,15 @@
       (incf line-index)))))
 
 ;taken from https://github.com/sbcl/sbcl/blob/master/src/code/filesys.lisp#L270
+;HACK: and like dont use this for obvious reasons, dont put on git....
+(defun path-kind (path)
+  (multiple-value-bind (exists error ino mode)
+      (sb-unix:unix-lstat path)
+    (declare (ignore error ino))
+    (when exists
+      (case (logand mode sb-unix:s-ifmt)
+    (#.sb-unix:s-ifreg :file)
+    (#.sb-unix:s-ifdir :directory)))))
 
 (defun get-filename (filename) ;wip
   "Get a usable path for writing the image to, default to ./out.png if bad"
@@ -378,6 +383,12 @@
          (pathname filename) ;use user input filename
          (merge-pathnames (truename ".") ;get current dir
                           (pathname filename))))))
+
+(defun sanitize-ang (ang)
+  "run mod 360 and convert to rad"
+  (let ((ang-sign (/ ang (abs ang))))
+    (degtorad (* ang-sign 
+                 (mod (abs ang) 360)))))
 
 ;FIX: image is flipped in the x direction, can just flip before saving
 (defun img-waves (wave-func param-obj base-img) ;;main
@@ -402,8 +413,8 @@
 
 (defun drawpoints-filled (point-list image)
   (dolist (p point-list)
-    (prog1 (draw-filled-circle image (first (first p)) (second (first p)) 20 imago:+red+)
-      (draw-filled-circle image (first (second p)) (second (second p)) 20 imago:+blue+))))
+    (prog1 (draw-filled-circle image (first (first p)) (second (first p)) 5 imago:+red+)
+      (draw-filled-circle image (first (second p)) (second (second p)) 5 imago:+blue+))))
 
 (defun drawpoints (point-list image)
   (dolist (p point-list)
@@ -437,10 +448,10 @@
                                offset
                                (list (imago:image-width blankimg)
                                      (imago:image-height blankimg)))))
+    (print p-l)
     (drawpoints-filled p-l blankimg)
     (draw-straight-lines p-l blankimg)
     (imago:write-png blankimg "~/Documents/projects/imgWaves/out.png")))
-
 
 (defun gainline-test (g image angle line-num) ;TODO: continue?
   (let* ((imgsize (list (imago:image-width image)
@@ -487,7 +498,7 @@
 (defvar params-in (make-instance 'params))
 (img-waves #'temp-sine-wave params-in base-bg-image)
 
-(main-loop base-bg-image myimage2 80 -90 0 10 #'temp-sine-wave 4 imago:+blue+)
+(main-loop base-bg-image myimage2 80 80 0 10 #'temp-sine-wave 4 imago:+blue+)
 (setq myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
 (imago:write-png myimage2 "~/Documents/projects/imgWaves/bgout.png")
 (defvar base-bg-image (imago:convert-to-grayscale ;use something like this
