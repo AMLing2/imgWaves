@@ -114,8 +114,8 @@
 ;;get item by index: (nth [index] [list])
 
 
-(defun flipPoints (x1 y1 x2 y2) ; remove?
-  (list x2 y2 x1 y1))
+(defun flipPoints (p-l) ; remove?
+  (list (second p-l) (first p-l)))
 (defun degtorad (deg) 
   (* deg (/ pi 180)))
 
@@ -326,7 +326,8 @@
 ;     (when (/= func-val 0) (print (list "old-y:" old-y "func-val:" func-val "angle:" angle
 ;                                        "out:" (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))))))
 ; (x-func-add 127 -8.487476 0.7853981633974483)
-
+(full-test 50 30 0 10 #'temp-sine-wave 4) ;PERF: test
+;guessing the drawing backwards fail is that gain line is done in one dir then draw in other
 (defun draw-func-line (image line-points relative-shape-line angle
                              line-thickness line-color)
   (let ((i 0))
@@ -355,7 +356,7 @@
          (line-index 0))
     (dolist (p line-points)
       (prog1 
-      (draw-func-line new-img p
+      (draw-func-line new-img (flipPoints p)
                       (create-relative-line-static line-func 
                                                     (make-gain-line-linear gain
                                                                            base-img
@@ -365,15 +366,6 @@
       (incf line-index)))))
 
 ;taken from https://github.com/sbcl/sbcl/blob/master/src/code/filesys.lisp#L270
-;HACK: and like dont use this for obvious reasons, dont put on git....
-(defun path-kind (path)
-  (multiple-value-bind (exists error ino mode)
-      (sb-unix:unix-lstat path)
-    (declare (ignore error ino))
-    (when exists
-      (case (logand mode sb-unix:s-ifmt)
-    (#.sb-unix:s-ifreg :file)
-    (#.sb-unix:s-ifdir :directory)))))
 
 (defun get-filename (filename) ;wip
   "Get a usable path for writing the image to, default to ./out.png if bad"
@@ -498,12 +490,15 @@
 (defvar params-in (make-instance 'params))
 (img-waves #'temp-sine-wave params-in base-bg-image)
 
-(main-loop base-bg-image myimage2 80 80 0 10 #'temp-sine-wave 4 imago:+blue+)
-(setq myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
-(imago:write-png myimage2 "~/Documents/projects/imgWaves/bgout.png")
+(defvar myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
 (defvar base-bg-image (imago:convert-to-grayscale ;use something like this
                      (imago:read-image "~/Documents/projects/imgWaves/bg.png")))
 
+(full-test 80 0 0 10 #'temp-sine-wave 3)
+(defun full-test (num-lines a offset g l-func stroke) ;do the two defvar above first in REPL
+  (setq myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
+  (main-loop base-bg-image myimage2 num-lines a offset g l-func stroke imago:+blue+)
+  (imago:write-png myimage2 "~/Documents/projects/imgWaves/bgout.png"))
 
 ;silly gif test:
 (defun speeeen ()
