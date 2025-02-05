@@ -5,6 +5,7 @@
 (defun first-is-dash? (arg); dont need to check if string type, *posix-argv* uses strings only
   (equalp (char arg 0)
           (char "-" 0)))
+
 (defun get-arg-val (arg-list)
   (unless (<= (list-length arg-list) 1)
     (unless (first-is-dash? (second arg-list))
@@ -27,13 +28,36 @@
         (funcall arg-func arg (get-arg-val arg-list))))
     (parse-args arg-func (rest arg-list))))
 
-(parse-args #'arg-example *posix-argv*)
+;;;; file reading and function input
 
-(defun arg-example (dash-arg val)
-  (print (list "dash:" (string dash-arg) "val:" (string val)))
-  (cond 
-    ((string= dash-arg "a") (print "hello a"))
-    ((string= dash-arg "long_arg") (print "long arg detected"))
-    ((string= dash-arg "r") (print "split r1"))
-    ((string= dash-arg "R") (print "split R2"))))
+(defun read-forms-from-file (func-path)
+  (with-open-file (stream func-path)
+    (loop for form = (read stream nil :eof)
+          until (eq form :eof)
+          collect form)))
+
+(defun get-wave-func (func-path func-arg-count)
+  "get last defined function, return nil if no function defined"
+  (let ((forms-list (read-forms-from-file func-path))
+        (last-func nil)
+        (last-args-count func-arg-count))
+    (dolist (form forms-list)
+      (when (and (consp form)
+                 (eq (first form) 'DEFUN)
+                 (symbolp (second form)))
+        (setf last-func (second form))
+        (setf last-args-count (length (third form))))) 
+    (if (= last-args-count func-arg-count)
+        last-func
+        (error "Input function has an invalid number of arguments, expected: ~D, got: ~D" 
+               func-arg-count 
+               last-args-count))))
+
+;(defun arg-example (dash-arg val)
+;  (print (list "dash:" (string dash-arg) "val:" (string val)))
+;  (cond 
+;    ((string= dash-arg "a") (print "hello a"))
+;    ((string= dash-arg "long_arg") (print "long arg detected"))
+;    ((string= dash-arg "r") (print "split r1"))
+;    ((string= dash-arg "R") (print "split R2"))))
 
