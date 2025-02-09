@@ -97,7 +97,7 @@
     ;; Set the output filename ('f' short, 'function' long)
     ((or (string= d-arg "f")
          (string= d-arg "function")) 
-     (setf (slot-value obj 'function) 
+     (setf (slot-value obj 'in-func) 
            (get-wave-func val +arg-count+)))
 
     ;; Set the offset of lines ('t' short, 'line-offset' long)

@@ -37,14 +37,16 @@
 
 (defun parse-last-file (arg-list help-func); ex: [PROGRAM] [OPTIONS] [FILE]
   (let ((last-val (first (reverse arg-list))))
-        (cond ((= (length arg-list) 1) ;checked twice but keeping in case only this func is used
+        (cond ((or (= (length arg-list) 1) ;checked twice but keeping in case only this func is used
+                   (equalp (char last-val 0)
+                           (char "-" 0)))
                (progn
-                 (print "No file input ~%")
+                 (format t "No file input ~%")
                  (funcall help-func)
                  (uiop:quit 1)))
               ((not (file-exists-p last-val))
                (progn 
-                 (print "Invalid file input ~%")
+                 (format t "Invalid file input ~%")
                  (uiop:quit 1)))
               (t last-val))))
 
@@ -60,7 +62,7 @@
          (parse-last-file arg-list help-func)) ;check if file is at the end instead
         ((not (file-exists-p (second arg-list)))
               (progn 
-                (print "Invalid file input ~%")
+                (format t "Invalid file input ~%")
                 (uiop:quit 1)))
         (t (second arg-list))))
   
@@ -95,11 +97,12 @@
           until (eq form :eof)
           collect form)))
 
-(defun get-wave-func (func-path func-arg-count)
+(defun get-wave-func (func-path func-arg-count) ;FIX: dosent output function type
   "get last defined function, return nil if no function defined"
   (unless (file-exists-p func-path)
-    (print "Invalid function file input ~%")
+    (format t "Invalid function file input ~%")
     (uiop:quit 1))
+  (load func-path)
   (let ((forms-list (read-forms-from-file func-path))
         (last-func nil)
         (last-args-count func-arg-count))
@@ -110,16 +113,16 @@
         (setf last-func (second form))
         (setf last-args-count (length (third form))))) 
     (if (= last-args-count func-arg-count)
-        last-func
+        (coerce last-func 'function)
         (error "Input function has an invalid number of arguments, expected: ~D, got: ~D" 
                func-arg-count 
                last-args-count))))
 
 ;(defun arg-example (dash-arg val)
-;  (print (list "dash:" (string dash-arg) "val:" (string val)))
+;  (format t (list "dash:" (string dash-arg) "val:" (string val)))
 ;  (cond 
-;    ((string= dash-arg "a") (print "hello a"))
-;    ((string= dash-arg "long_arg") (print "long arg detected"))
-;    ((string= dash-arg "r") (print "split r1"))
-;    ((string= dash-arg "R") (print "split R2"))))
+;    ((string= dash-arg "a") (format t "hello a"))
+;    ((string= dash-arg "long_arg") (format t "long arg detected"))
+;    ((string= dash-arg "r") (format t "split r1"))
+;    ((string= dash-arg "R") (format t "split R2"))))
 
