@@ -1,6 +1,6 @@
 (ql:quickload "IMAGO")
-(load #P"~/Documents/projects/imgWaves/src/arg.lisp")
-;(load #P"arg.lisp")
+;(load #P"~/Documents/projects/imgWaves/src/arg.lisp")
+(load #P"src/arg.lisp")
 
 (defconstant +arg-count+ 3) ;number of arguments for the input function (ex below)
 (defun base-sine-wave (g n x)
@@ -17,7 +17,7 @@
   (bg-color imago:+white+ :type imago:rgb-pixel)
   (img-invert nil :type boolean)
   (in-func #'base-sine-wave :type function)
-  (filename "out.png" :type string)) ;converted to pathname type later
+  (filename #p"./out.png" :type pathname))
 
 (defun print-help ()
   (format t "Usage: imgwaves [image file] [options]~%~%")
@@ -48,9 +48,8 @@
   (* deg (/ pi 180)))
 (defun sanitize-ang (ang)
   "mod 360 and convert to rad"
-  (let ((ang-sign (/ ang (abs ang))))
-    (degtorad (* ang-sign 
-                 (mod (abs ang) 360)))))
+    (degtorad (* (signum ang) 
+                 (mod (abs ang) 360))))
 (defun hex-to-color (hex-str)
   "convert a string of a hex value to imago:rgb-pixel type"
   (if (or (equal (subseq hex-str 0 2) "#x")
@@ -83,7 +82,7 @@
          (string= d-arg "ramp-down")) (setf (slot-value obj 'g-down) (stof val)))
 
     ;; Set the angle of lines ('a' short, 'angle' long)
-    ((or (string= d-arg "a")
+    ((or (string= d-arg "a") ;FIX: not updating for some reason?
          (string= d-arg "angle")) (setf (slot-value obj 'angle) (stof val)))
 
     ;; Set the number of lines ('n' short, 'num-lines' long)
@@ -92,7 +91,8 @@
 
     ;; Set the output filename ('o' short, 'output-file' long)
     ((or (string= d-arg "o")
-         (string= d-arg "output-file")) (setf (slot-value obj 'filename) val))
+         (string= d-arg "output-file")) (setf (slot-value obj 'filename) 
+         (get-out-filename val '("png" "jpg" "pnm" "tga"))))
 
     ;; Set the output filename ('f' short, 'function' long)
     ((or (string= d-arg "f")
@@ -165,6 +165,10 @@
     (* ang-sign 
        (mod (abs ang) (* 2 pi)))))
 
+(defun float-eq (a b)
+  "compare if two floating point numbers are within a tolerence to eachother"
+  (< (abs (- a b)) 1.0e-4))
+
 (defun get-quadrant (a) ;-2 pi to 2 pi
   (let ((n (if (> a 0)
               (ceiling (* 2 (/ (clamp-ang-rad a) pi)))
@@ -187,29 +191,30 @@
     (> a (/ (* pi 3) 2))
     (< a (- (/ (* pi 3) 2))))) ;;wont work outside of [-2*pi to 2*pi]
 
+;FIX: divide by zero error here now?
 (defun linepoints-init (ang imgsize) ;surprisingly ang = 0 works, might add to cond
   "get points of line of angle (A + pi/2) which intersects lines of angle A from corners"
   ;three lines y = ax + c, y = bx + d1 (top), y = bx + d2 (bottom)
-  (cond ((= ang (degtorad (- 90))) (list (first imgsize) ; floating point comparison hurts
-                                         (/ (second imgsize) 2)))
-      ((= ang (degtorad (- 180 90))) (list 0 ;works without this but might not on all machines
-                                          (/ (second imgsize) 2)))
-      (T (let* ((ang-init (+ ang (/ pi 2)))
-                (a (tan ang-init))
-                (b (tan ang))
-                (cx (/ (first imgsize) 2))
-                (cy (- (/ (second imgsize) 2)))
-                (lq (get-quadrant ang-init))
-                (w (if (or (= lq 1) (= lq 4)) 
-                       (first imgsize) 
-                       0))
-                (h (if (or (= lq 1) (= lq 2))
-                       0
-                       (- (second imgsize)))))
-           (list (/ (- (+ h (* a cx)) cy (* b w)) ; checked
-                    (- a b))
-                 (- (/ (- (+ (* b cx) h) (* b w) (/ (* cy b) a))
-                       (- 1 (/ b a)))))))))
+  (cond ((float-eq ang (degtorad (- 90))) (list (first imgsize)
+                                                (/ (second imgsize) 2)))
+        ((float-eq ang (degtorad (- 180 90))) (list 0
+                                                    (/ (second imgsize) 2)))
+        (T (let* ((ang-init (+ ang (/ pi 2)))
+                  (a (tan ang-init))
+                  (b (tan ang))
+                  (cx (/ (first imgsize) 2))
+                  (cy (- (/ (second imgsize) 2)))
+                  (lq (get-quadrant ang-init))
+                  (w (if (or (= lq 1) (= lq 4)) 
+                         (first imgsize) 
+                         0))
+                  (h (if (or (= lq 1) (= lq 2))
+                         0
+                         (- (second imgsize)))))
+             (list (/ (- (+ h (* a cx)) cy (* b w)) ; checked
+                      (- a b))
+                   (- (/ (- (+ (* b cx) h) (* b w) (/ (* cy b) a))
+                         (- 1 (/ b a)))))))))
 
 (defun linepoints-r (cx cy a imgsize) ;;a rounded version of linepoints, mavbe remove prev
   (let* ((xval)
@@ -427,23 +432,24 @@
                (slot-value param-obj 'l-thickness)
                (slot-value param-obj 'l-color))
     (imago:write-image new-img out-file) ;move to main-loop?
-    (format "image saved as: ~a%" (namestring out-file))))
+    (format t "image saved as: ~a~%" (namestring out-file))))
 
 ;TODO: continue
 (defun start-program () ;start function for sbcl, read args then begin
+  (print *posix-argv*)
   (let ((prog-params (make-params))
-        (in-img (first (reverse *posix-argv*)))) ;TODO: change to function with file check to arg.lisp
-        (parse-args  
-          (lambda (arg val) 
-            (fill-from-args prog-params arg val)) ; error handling done here
-          *POSIX-ARGV*)
+        (input-img (parse-main-file *posix-argv* #'print-help)))
+    (parse-args  
+      (lambda (arg val) 
+        (fill-from-args prog-params arg val)) ; error handling done here
+      *POSIX-ARGV*)
     (img-waves (slot-value prog-params 'in-func)
                prog-params
                (imago:convert-to-grayscale
-                 (imago:read-image in-img)))))
+                 (imago:read-image input-img)))))
 
 ;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "5"))
-*POSIX-ARGV*
+;*POSIX-ARGV*
 ;(start-program)
 
 
@@ -553,7 +559,7 @@
                   (setf gray-col (imago:invert-gray gray-col)))
 
 (full-test 20 10 0 1 10 #'temp-sine-wave 0 T)
-(full-test 10 10 0 20 20 #'temp-sine-wave 2 nil)
+(full-test 10 0 0 20 20 #'temp-sine-wave 2 nil)
 
 (defun full-test (num-lines a offset g-up g-down l-func stroke blur) ;do the two defvar above first in REPL
   (let ((newimg (imago:make-rgb-image (imago:image-width base-bg-image)

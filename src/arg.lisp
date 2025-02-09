@@ -36,7 +36,7 @@
          (not (uiop:directory-pathname-p pathconv)))))
 
 (defun parse-last-file (arg-list help-func); ex: [PROGRAM] [OPTIONS] [FILE]
-  (let ((last-val (first (reverse arg-list)))
+  (let ((last-val (first (reverse arg-list))))
         (cond ((= (length arg-list) 1) ;checked twice but keeping in case only this func is used
                (progn
                  (print "No file input ~%")
@@ -46,13 +46,13 @@
                (progn 
                  (print "Invalid file input ~%")
                  (uiop:quit 1)))
-              (t last-val)))))
+              (t last-val))))
 
 (defun parse-main-file (arg-list help-func); ex: [PROGRAM] [FILE] [OPTIONS]
   "get input file located before or after options"
   (cond ((= (length arg-list) 1)
          (progn
-           (print "No file input ~%")
+           (format  t "No file input ~%")
            (funcall help-func)
            (uiop:quit 1)))
         ((equalp (char (second arg-list) 0)
@@ -70,14 +70,14 @@
   "Get a usable path and filename for writing a file to, returns a filename and if the file overwrites another."
   (unless (null usable-filetypes)
     (when (equal nil
-                 (find (nth-value 1 (uiop:split-name-type (string filename)))
+                 (find (nth-value 1 (uiop:split-name-type (namestring filename)))
                   usable-filetypes
                   :test #'equal))
       (format t "Unexpected output filetype, got: ~a, expected: ~{~a~^, ~}"
-              (nth-value 1 (uiop:split-name-type (string filename)))
+              (nth-value 1 (uiop:split-name-type (namestring filename)))
               usable-filetypes)
       (uiop:quit 1)))
-  (let ((newfile (if (equal nil (find #\/ filename))
+  (let ((newfile (if (equal nil (find #\/ (namestring filename)))
                      (merge-pathnames #P"./" filename) ; current dir
                    (pathname filename))))
     (cond ((file-exists-p newfile) ;check if file exists
@@ -97,7 +97,7 @@
 
 (defun get-wave-func (func-path func-arg-count)
   "get last defined function, return nil if no function defined"
-  (unless (is-valid-file? func-path)
+  (unless (file-exists-p func-path)
     (print "Invalid function file input ~%")
     (uiop:quit 1))
   (let ((forms-list (read-forms-from-file func-path))
