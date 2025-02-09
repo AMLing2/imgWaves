@@ -1,14 +1,22 @@
 (ql:quickload "IMAGO")
+(load #P"~/Documents/projects/imgWaves/src/arg.lisp")
+;(load #P"arg.lisp")
+
+(defconstant +arg-count+ 3) ;number of arguments for the input function (ex below)
+(defun base-sine-wave (g n x)
+  (+ (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
 
 (defstruct params
   (g-up 10.0 :type float)
-  (g-down 10.0 :type float) ;remove?
+  (g-down 10.0 :type float)
   (n-lines 30 :type integer)
   (angle 0.0 :type float) ;degrees 
-  (offset 0 :type integer) ;needs to be added
+  (offset 0 :type integer)
   (l-thickness 0 :type integer) ;0 = 1px
   (l-color imago:+black+ :type imago:rgb-pixel)
   (bg-color imago:+white+ :type imago:rgb-pixel)
+  (img-invert nil :type boolean)
+  (in-func #'base-sine-wave :type function)
   (filename "out.png" :type string)) ;converted to pathname type later
 
 (defun print-help ()
@@ -18,17 +26,49 @@
   (format t "  -r, --ramp-down <float>      Set the ramp gain down.~%")
   (format t "  -a, --angle <float>          Set the angle of lines in degrees.~%")
   (format t "  -n, --num-lines <integer>    Set the number of lines.~%")
-  (format t "  -o, --output-file <string>   Set the output image filename and filetype (default: png).~%")
+  (format t "  -o, --output-file <filename> Set the output image filename and filetype (default: png).~%")
   (format t "  -t, --line-offset <integer>  Set the offset of lines in the relative Y direction.~%")
-  (format t "  -b, --background-color <hex> Set the background color in hexadecimal format.~%")
-  (format t "  -l, --line-color <hex>       Set the line color in hexadecimal format.~%")
+  (format t "  -b, --background-color <hex> Set the background color in the format \"#xRRGGBB.\"~%")
+  (format t "  -l, --line-color <hex>       Set the line color in the format \"#xRRGGBB.\"~%")
   (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
-;  (format t "  -I                           Invert the image.~%")
+  (format t "  -I                           Invert the image.~%")
+  (format t "  -f, --function <filename>    Set a custom line function from a lisp program.~%")
   (format t "  -h, --help                   Display this help message.~%")
   (format t "Example:~%")
   (format t "  imgwaves base.png -R 5.0 -a 45 -n 100 -o out.png~%"))
 
-;TODO: need to convert val to int/float where neeeded, is probably string always
+; conversions
+(defun stoi (str)
+  "string to integer"
+  (parse-integer str))
+(defun stof (str)
+  "string to float"
+  (float (read-from-string str)))
+(defun degtorad (deg) 
+  (* deg (/ pi 180)))
+(defun sanitize-ang (ang)
+  "mod 360 and convert to rad"
+  (let ((ang-sign (/ ang (abs ang))))
+    (degtorad (* ang-sign 
+                 (mod (abs ang) 360)))))
+(defun hex-to-color (hex-str)
+  "convert a string of a hex value to imago:rgb-pixel type"
+  (if (or (equal (subseq hex-str 0 2) "#x")
+          (= (length hex-str) 8))
+      (let ((hex (subseq hex-str 2)))
+        (imago:make-color
+          (parse-integer (subseq hex 0 2) :radix 16)
+          (parse-integer (subseq hex 2 4) :radix 16)
+          (parse-integer (subseq hex 4 6) :radix 16)))
+      (progn
+        (format t "Expected hex color in format: #xRRGGBB, got: ~a~%" hex-str)
+        (uiop:quit 1))))
+;(imago:convert-color-to-imago-format #xffffff #xff)
+
+;maybe in the future make it so the argument name is mentioned in the error message
+(defgeneric fill-from-args (obj d-arg val)
+  (:documentation "Set parameters from command line arguments."))
+
 (defmethod fill-from-args ((obj params) d-arg val)
   (cond
     ((or (string= d-arg "-h")
@@ -38,37 +78,46 @@
 
     ;; Set the ramp gain up/down ('R'/'r' short, 'ramp-up'/'ramp-down' long)
     ((or (string= d-arg "R")
-         (string= d-arg "ramp-up")) (setf (slot-value obj 'g-up) val))
+         (string= d-arg "ramp-up")) (setf (slot-value obj 'g-up) (stof val)))
     ((or (string= d-arg "r")
-         (string= d-arg "ramp-down")) (setf (slot-value obj 'g-down) val))
+         (string= d-arg "ramp-down")) (setf (slot-value obj 'g-down) (stof val)))
 
     ;; Set the angle of lines ('a' short, 'angle' long)
     ((or (string= d-arg "a")
-         (string= d-arg "angle")) (setf (slot-value obj 'angle) val))
+         (string= d-arg "angle")) (setf (slot-value obj 'angle) (stof val)))
 
     ;; Set the number of lines ('n' short, 'num-lines' long)
     ((or (string= d-arg "n")
-         (string= d-arg "num-lines")) (setf (slot-value obj 'n-lines) val))
+         (string= d-arg "num-lines")) (setf (slot-value obj 'n-lines) (stoi val)))
 
     ;; Set the output filename ('o' short, 'output-file' long)
     ((or (string= d-arg "o")
          (string= d-arg "output-file")) (setf (slot-value obj 'filename) val))
 
+    ;; Set the output filename ('f' short, 'function' long)
+    ((or (string= d-arg "f")
+         (string= d-arg "function")) 
+     (setf (slot-value obj 'function) 
+           (get-wave-func val +arg-count+)))
+
     ;; Set the offset of lines ('t' short, 'line-offset' long)
     ((or (string= d-arg "t")
-         (string= d-arg "line-offset")) (setf (slot-value obj 'offset) val))
+         (string= d-arg "line-offset")) (setf (slot-value obj 'offset) (stoi val)))
 
     ;; Set the background color ('b' short, 'background-color' long)
     ((or (string= d-arg "b")
-         (string= d-arg "background-color")) (setf (slot-value obj 'bg-color) val))
+         (string= d-arg "background-color")) (setf (slot-value obj 'bg-color) (hex-to-color val)))
 
     ;; Set the line color ('l' short, 'line-color' long)
     ((or (string= d-arg "l")
-         (string= d-arg "line-color")) (setf (slot-value obj 'l-color) val))
+         (string= d-arg "line-color")) (setf (slot-value obj 'l-color) (hex-to-color val)))
 
     ;; Set the line thickness ('L' short, 'line-thickness' long)
     ((or (string= d-arg "L")
-         (string= d-arg "line-thickness")) (setf (slot-value obj 'l-thickness) val))
+         (string= d-arg "line-thickness")) (setf (slot-value obj 'l-thickness) (stoi val)))
+
+    ;; set value to invert the image to true
+    ((string= d-arg "I") (setf (slot-value obj 'img-invert) T))
 
     ;; Handle unknown arguments
     (t (format t "Unknown argument provided: ~a~%" d-arg)
@@ -107,17 +156,8 @@
 ;  3 - run in terminal with no other args to open REPL with choosable options:
 ;    imgwaves /path/image
 
-(defvar in-Image (imago::read-image "~/Documents/projects/imgWaves/src/test.png"))
-(defvar img-size (list (imago::image-width in-Image) (imago::image-height in-Image)))
-(print img-size)
-
-;;get item by index: (nth [index] [list])
-
-
-(defun flipPoints (p-l) ; remove?
+(defun flipPoints (p-l)
   (list (second p-l) (first p-l)))
-(defun degtorad (deg) 
-  (* deg (/ pi 180)))
 
 (defun clamp-ang-rad (ang)
   "run mod 2 pi and preserve sign"
@@ -206,7 +246,7 @@
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
 
-(gen-start-points-test 30 (degtorad 135) 0 (imago:make-rgb-image 500 300 imago:+white+)) ;PERF:
+;(gen-start-points-test 30 (degtorad 135) 0 (imago:make-rgb-image 500 300 imago:+white+)) ;PERF:
 
 (defun gen-start-points (line-num a offset imgsize)  ;;TODO: add offset, use for main func
   (let* ((imgsizefixed (mapAdd -1 imgsize))
@@ -224,25 +264,28 @@
                          imgsizefixed))))
 
 ;;;;; Image processing - adding gain:
-(gainline-test 5 gray-image 45 1) ;PERF: test here
+;(gainline-test 5 gray-image 45 1) ;PERF: test here
 
-;TODO: fix artifact in going up here
+;(full-test 10 10 0 20 20 #'temp-sine-wave 1 nil)
 (defun add-gain (g up? index line) ; destructve modification of line list
-  (let ((ind-move (if up? 1 -1)) ;finished?
-        (cnt 0))
-    (loop for g-add downfrom 255 to 0 by g ;FIX: replace 255 -> (nth index line)?
-          do (progn 
-               (setq cnt (+ cnt ind-move))
-              (if (or (> (+ index cnt) (list-length line));length -1 ?
-                     (< (+ index cnt) 0))
-                 (return-from add-gain nil) ;use instead of (break)
-                 (if (> (nth (+ index cnt) line) g-add); can be moved to first or?
-                     (return-from add-gain nil)
-                     (setf (nth (+ index cnt) line) g-add)))))))
+  (unless (<= g 0.0)
+    (let ((ind-move (if up? 1 -1))
+          (cnt 0))
+      (loop for g-add downfrom 255 to 0 by g ;FIX: replace 255 -> (nth index line)?
+            do (progn 
+                 (setq cnt (+ cnt ind-move))
+                 (if (or (> (+ index cnt) (- (list-length line) 1))
+                         (< (+ index cnt) 0)) 
+                     (return-from add-gain nil) ;use instead of (break)
+                   (if (> (nth (+ index cnt) line) g-add)
+                       (return-from add-gain nil)
+                       (setf (nth (+ index cnt) line) g-add)))))))) ;(+ index cnt) is done 4 times here, move to let?
 
-(defun apply-gain-list (g index-list grayscale-line)
-  (dolist (i index-list)
-    (add-gain g (second i) (first i) grayscale-line)))
+(defun apply-gain-list (g-up g-down index-list grayscale-line)
+  (let ((g nil))
+    (dolist (i index-list)
+      (setq g (if (second i) g-up g-down))
+      (add-gain g (second i) (first i) grayscale-line))))
 
 (defun find-color-jumps (grayscale-line)
   (let ((prev (first grayscale-line))
@@ -251,7 +294,7 @@
     (loop for i from 1 to (- (length grayscale-line) 1) by 1
           do (prog1 (setq current (nth i grayscale-line))
                (cond ((> (- prev current) 0); goes up
-                      (push (list i T) index-list)) ;adds item to front but does not matter in this context
+                      (push (list (- i 1) T) index-list)) ;adds item to front but does not matter in this context
                      ((< (- prev current) 0); goes down
                       (push (list i nil) index-list))) 
                (setq prev current)))
@@ -263,9 +306,9 @@
                          255 :start 120 :end 160)))
 ; if &KEY, this means you need to use :name to fill in the variables as they are
     (print (find-color-jumps test-list))))
-(find-color-jumps-test)
+;(find-color-jumps-test)
 
-(defun make-gain-line-linear (g image line-point) ;finished? rename in the future maybe
+(defun make-gain-line-linear (g-up g-down image line-point) ;finished? rename in the future maybe
   (let ((g-list nil))
     (imago:do-line-pixels (image color x y ;if 300x300 image then 0->299
                                  (first (first line-point))   ;x1
@@ -273,8 +316,8 @@
                                  (first (second line-point))  ;x2
                                  (second (second line-point)));y2
       (push (logand color #x00FF) g-list)) ;should be ANDed with #x00FF?
-    ;(print g-list) ;remove
-    (apply-gain-list g
+    (apply-gain-list g-up
+                     g-down
                      (find-color-jumps g-list) ; this line works
                      g-list); dont reverse, dosent seem to be destructive..
     (values (reverse g-list))))                 ;a double reverse that might work well?
@@ -299,35 +342,32 @@
                               i)))
 
 ;;;;; image:
-;;HACK: redo this function, good idea but leaves a lot of artifacts
-(defun draw-filled-circle (image x y r color)
-  (prog1 (imago:draw-point image x y color) ;fill in center point
-    (loop for ri downfrom r to 1 by 1 
-          do (imago:draw-circle image x y ri color))))
+
+; based on https://stackoverflow.com/a/1201227
+(defun draw-filled-circle (image x y r color) ;TODO: fix huge jump between r = 1 and 2?
+  (let ((h 0))
+    (loop for nx from (- r) to r by 1
+           do (setq h (truncate (sqrt (- (* r r ) (* nx nx)))))
+           (loop for ny from (- h) to h by 1
+                 do 
+                 (imago:draw-point image
+                                   (+ x nx)
+                                   (+ y ny)
+                                   color)))
+    (imago:draw-circle image x y r color))) ;smoothen edges
+
+(defun invert-image (image) ; imago:invert dosen't exist?
+  (imago:do-image-pixels (image gray-col x y)
+    (setf gray-col (imago:invert-gray gray-col))))
 
 (defun gray-pixel (image x y)
   (logand (imago:image-pixel image x y) #x00FF))
-
-;NOTE: way to do this!!!! create a relative x,y line with the wave pattern, then with imago drawline, use the x,y of current pixel + relative x,y after some angle conversion to draw the pixel or filled circle
 
 (defun x-func-add (old-x func-val angle) ;func-val acts as len for a new vector
   (round (+ old-x (* func-val (- (sin angle))))))
 (defun y-func-add (old-y func-val angle)
   (round (+ old-y (* func-val (- (cos angle))))))
 
-;tests:
-; (defun x-func-add (old-x func-val angle) ;FIX: remove? func-val acts as len for a new vector
-;   (prog1 (round (+ old-x (* func-val (cos (+ angle (/ pi 2))))))
-;     (when (/= func-val 0) (print (list "old-x:" old-x "func-val:" func-val "angle:" angle
-;                                        "out:" (round (+ old-x (* func-val (cos (+ angle (/ pi 2)))))))))))
-; old-x
-; (defun y-func-add (old-y func-val angle)
-;   (prog1 (round (+ old-y (* func-val (sin (+ angle (/ pi 2))))))
-;     (when (/= func-val 0) (print (list "old-y:" old-y "func-val:" func-val "angle:" angle
-;                                        "out:" (round (+ old-y (* func-val (sin (+ angle (/ pi 2)))))))))))
-; (x-func-add 127 -8.487476 0.7853981633974483)
-(full-test 50 30 0 10 #'temp-sine-wave 4) ;PERF: test
-;guessing the drawing backwards fail is that gain line is done in one dir then draw in other
 (defun draw-func-line (image line-points relative-shape-line angle
                              line-thickness line-color)
   (let ((i 0))
@@ -345,12 +385,12 @@
     (incf i)))))
 
 ;putting it all together
-(defun main-loop (base-img new-img num-lines angle offset gain
+(defun main-loop (base-img new-img num-lines angle offset g-up g-down
                            line-func line-thickness line-color)
   (let* ((imgsize (list (imago:image-width base-img)
                         (imago:image-height base-img)))
          (line-points (gen-start-points num-lines
-                                        (degtorad angle)
+                                        (sanitize-ang angle)
                                         offset 
                                         imgsize))
          (line-index 0))
@@ -358,50 +398,61 @@
       (prog1 
       (draw-func-line new-img (flipPoints p)
                       (create-relative-line-static line-func 
-                                                    (make-gain-line-linear gain
+                                                    (make-gain-line-linear g-up
+                                                                           g-down
                                                                            base-img
                                                                            p)
                                                     line-index)
-                      (degtorad angle) line-thickness line-color)
+                      (sanitize-ang angle) line-thickness line-color)
       (incf line-index)))))
 
-;taken from https://github.com/sbcl/sbcl/blob/master/src/code/filesys.lisp#L270
 
-(defun get-filename (filename) ;wip
-  "Get a usable path for writing the image to, default to ./out.png if bad"
-  (if (or (t)
-          (t)) (t)
-      ((if (char= #\/ (char filename 0));check if name starts with "/"
-         (pathname filename) ;use user input filename
-         (merge-pathnames (truename ".") ;get current dir
-                          (pathname filename))))))
 
-(defun sanitize-ang (ang)
-  "run mod 360 and convert to rad"
-  (let ((ang-sign (/ ang (abs ang))))
-    (degtorad (* ang-sign 
-                 (mod (abs ang) 360)))))
-
-;FIX: image is flipped in the x direction, can just flip before saving
 (defun img-waves (wave-func param-obj base-img) ;;main
-  "Create a new image by run the function WAVE-FUNC over BASE-IMG with parameters"
+  "Create a new image by using the function WAVE-FUNC over BASE-IMG with parameters"
   (let* ((new-img (imago:make-rgb-image
                     (imago:image-width base-img)
                     (imago:image-height base-img)
                     (slot-value param-obj 'bg-color)))
-         (out-file (get-filename (slot-value param-obj 'filename))))
+         (out-file (get-out-filename (slot-value param-obj 'filename))))
+    (when (slot-value param-obj 'img-invert)
+      (invert-image base-img))
     (main-loop base-img new-img
                (slot-value param-obj 'n-lines)
                (slot-value param-obj 'angle)
                (slot-value param-obj 'offset)
-               (slot-value param-obj 'g-up);add g-down later or remove?
+               (slot-value param-obj 'g-up)
+               (slot-value param-obj 'g-down)
                wave-func
                (slot-value param-obj 'l-thickness)
                (slot-value param-obj 'l-color))
-    (imago:write-image new-img out-file)))
+    (imago:write-image new-img out-file) ;move to main-loop?
+    (format "image saved as: ~a%" (namestring out-file))))
+
+;TODO: continue
+(defun start-program () ;start function for sbcl, read args then begin
+  (let ((prog-params (make-params))
+        (in-img (first (reverse *posix-argv*)))) ;TODO: change to function with file check to arg.lisp
+        (parse-args  
+          (lambda (arg val) 
+            (fill-from-args prog-params arg val)) ; error handling done here
+          *POSIX-ARGV*)
+    (img-waves (slot-value prog-params 'in-func)
+               prog-params
+               (imago:convert-to-grayscale
+                 (imago:read-image in-img)))))
+
+;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "5"))
+*POSIX-ARGV*
+;(start-program)
+
+
+
+
 
 ;;image tests:
 ;NOTE: all of this will be moved later
+(when (eq t nil) ;block comment for repl loading
 
 (defun drawpoints-filled (point-list image)
   (dolist (p point-list)
@@ -445,7 +496,7 @@
     (draw-straight-lines p-l blankimg)
     (imago:write-png blankimg "~/Documents/projects/imgWaves/out.png")))
 
-(defun gainline-test (g image angle line-num) ;TODO: continue?
+(defun gainline-test (g image angle line-num)
   (let* ((imgsize (list (imago:image-width image)
                         (imago:image-height image)))
          (line-points (gen-start-points line-num (degtorad angle) 0 imgsize)))
@@ -481,7 +532,8 @@
 
 ;PERF: TEST OF MAIN LOOP:
 (defun temp-sine-wave (g n x)
-  (+ (* g 20) (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
+  (+ (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
+  ;(+ (* g 20) (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
 (defun no-wave (g n x)
   (* g 20))
 (defun sawtooth-wave (g n x) ;normalize g
@@ -492,13 +544,25 @@
 
 (defvar myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
 (defvar base-bg-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/bg.png")))
+                     (imago:read-image "~/Documents/projects/imgWaves/polkadots.jpg")))
+(setq base-bg-image (imago:convert-to-grayscale ;use something like this
+                     (imago:read-image "~/Documents/projects/imgWaves/src/test_i2.png")))
+(setq base-bg-image (imago:invert-gray (imago:image-pixels base-bg-image)))
 
-(full-test 80 0 0 10 #'temp-sine-wave 3)
-(defun full-test (num-lines a offset g l-func stroke) ;do the two defvar above first in REPL
-  (setq myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
-  (main-loop base-bg-image myimage2 num-lines a offset g l-func stroke imago:+blue+)
-  (imago:write-png myimage2 "~/Documents/projects/imgWaves/bgout.png"))
+(imago:do-image-pixels (base-bg-image gray-col x y)
+                  (setf gray-col (imago:invert-gray gray-col)))
+
+(full-test 20 10 0 1 10 #'temp-sine-wave 0 T)
+(full-test 10 10 0 20 20 #'temp-sine-wave 2 nil)
+
+(defun full-test (num-lines a offset g-up g-down l-func stroke blur) ;do the two defvar above first in REPL
+  (let ((newimg (imago:make-rgb-image (imago:image-width base-bg-image)
+                                       (imago:image-height base-bg-image)
+                                       imago:+black+)))
+  (main-loop base-bg-image newimg num-lines a offset g-up g-down l-func stroke imago:+white+)
+  (when blur  
+    (imago:blur newimg)) ;not work ;|
+  (imago:write-png newimg "~/Documents/projects/imgWaves/bgout.png")))
 
 ;silly gif test:
 (defun speeeen ()
@@ -512,3 +576,5 @@
              (setq outImg (imago:make-rgb-image 600 600 imago:+white+))
              (incf outnum)))))
 (speeeen)
+
+)

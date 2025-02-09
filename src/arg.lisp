@@ -1,6 +1,6 @@
 ;argparser:
 
-;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "--long_arg" "153000.0"))
+;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "5"))
 
 (defun first-is-dash? (arg); dont need to check if string type, *posix-argv* uses strings only
   (equalp (char arg 0)
@@ -28,7 +28,66 @@
         (funcall arg-func arg (get-arg-val arg-list))))
     (parse-args arg-func (rest arg-list))))
 
+(defun file-exists-p (path) ;rename? existing function with different result: uiop:file-exists-p
+  "Check if PATH refers to an existing file and not a directory."
+  ;; Convert string to pathname if necessary
+  (let ((pathconv (pathname path)))
+    (and (not (equal (probe-file pathconv) nil))
+         (not (uiop:directory-pathname-p pathconv)))))
+
+(defun parse-last-file (arg-list help-func); ex: [PROGRAM] [OPTIONS] [FILE]
+  (let ((last-val (first (reverse arg-list)))
+        (cond ((= (length arg-list) 1) ;checked twice but keeping in case only this func is used
+               (progn
+                 (print "No file input ~%")
+                 (funcall help-func)
+                 (uiop:quit 1)))
+              ((not (file-exists-p last-val))
+               (progn 
+                 (print "Invalid file input ~%")
+                 (uiop:quit 1)))
+              (t last-val)))))
+
+(defun parse-main-file (arg-list help-func); ex: [PROGRAM] [FILE] [OPTIONS]
+  "get input file located before or after options"
+  (cond ((= (length arg-list) 1)
+         (progn
+           (print "No file input ~%")
+           (funcall help-func)
+           (uiop:quit 1)))
+        ((equalp (char (second arg-list) 0)
+                 (char "-" 0)) 
+         (parse-last-file arg-list help-func)) ;check if file is at the end instead
+        ((not (file-exists-p (second arg-list)))
+              (progn 
+                (print "Invalid file input ~%")
+                (uiop:quit 1)))
+        (t (second arg-list))))
+  
 ;;;; file reading and function input
+
+(defun get-out-filename (filename &optional usable-filetypes)
+  "Get a usable path and filename for writing a file to, returns a filename and if the file overwrites another."
+  (unless (null usable-filetypes)
+    (when (equal nil
+                 (find (nth-value 1 (uiop:split-name-type (string filename)))
+                  usable-filetypes
+                  :test #'equal))
+      (format t "Unexpected output filetype, got: ~a, expected: ~{~a~^, ~}"
+              (nth-value 1 (uiop:split-name-type (string filename)))
+              usable-filetypes)
+      (uiop:quit 1)))
+  (let ((newfile (if (equal nil (find #\/ filename))
+                     (merge-pathnames #P"./" filename) ; current dir
+                   (pathname filename))))
+    (cond ((file-exists-p newfile) ;check if file exists
+           (values newfile T))
+          ((uiop:directory-pathname-p newfile) ;check if directory
+           (progn
+             (format t "Chosen output filename: ~a is a directory and not a file"
+                     filename)
+             (uiop:quit 1)))
+          (t (values newfile nil))))) ; is new file
 
 (defun read-forms-from-file (func-path)
   (with-open-file (stream func-path)
@@ -38,6 +97,9 @@
 
 (defun get-wave-func (func-path func-arg-count)
   "get last defined function, return nil if no function defined"
+  (unless (is-valid-file? func-path)
+    (print "Invalid function file input ~%")
+    (uiop:quit 1))
   (let ((forms-list (read-forms-from-file func-path))
         (last-func nil)
         (last-args-count func-arg-count))
