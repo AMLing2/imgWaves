@@ -1,5 +1,5 @@
 TARGET = imgwaves
-SOURCES = src/imgWaves.lisp src/arg.lisp
+SOURCES = src/imgWaves.lisp src/arg.lisp src/svgout.lisp
 
 all: $(TARGET)
 

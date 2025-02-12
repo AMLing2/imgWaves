@@ -1,6 +1,7 @@
 (ql:quickload "IMAGO")
 ;(load #P"~/Documents/projects/imgWaves/src/arg.lisp")
 (load #P"src/arg.lisp")
+(load #P"src/svgout.lisp")
 
 (defconstant +arg-count+ 3) ;number of arguments for the input function (ex below)
 (defun base-sine-wave (g n x)
@@ -62,7 +63,17 @@
       (progn
         (format t "Expected hex color in format: #xRRGGBB, got: ~a~%" hex-str)
         (uiop:quit 1))))
-;(imago:convert-color-to-imago-format #xffffff #xff)
+
+(defun left-pad-2 (str)
+  (if (= (length str) 1)
+    (concatenate 'string "0" str)
+      str))
+(defun imago-color-to-hex (col)
+  "convert imago color format to hex of '#RRGGBB' for svg"
+  (let ((r (left-pad-2 (write-to-string (imago:color-red   col) :base 16)))
+        (g (left-pad-2 (write-to-string (imago:color-green col) :base 16)))
+        (b (left-pad-2 (write-to-string (imago:color-blue  col) :base 16))))
+    (concatenate 'string "#" r g b)))
 
 ;maybe in the future make it so the argument name is mentioned in the error message
 (defgeneric fill-from-args (obj d-arg val)
@@ -92,7 +103,7 @@
     ;; Set the output filename ('o' short, 'output-file' long)
     ((or (string= d-arg "o")
          (string= d-arg "output-file")) (setf (slot-value obj 'filename) 
-         (get-out-filename val '("png" "jpg" "pnm" "tga"))))
+         (get-out-filename val '("png" "jpg" "pnm" "tga" "svg"))))
 
     ;; Set the output filename ('f' short, 'function' long)
     ((or (string= d-arg "f")
@@ -306,7 +317,7 @@
     (values index-list)))
 
 ;find-color-jumps test, temp
-(defun find-color-jumps-test () ;finished i think
+(defun find-color-jumps-test () ;finished i think FIX: remove
   (let ((test-list (fill (make-list 200 :initial-element 0)
                          255 :start 120 :end 160)))
 ; if &KEY, this means you need to use :name to fill in the variables as they are
@@ -330,6 +341,7 @@
 ;;;;; creating and reading shape for relative line:
 
 (defun create-relative-line-static (line-func gain-line line-num) ;no idea what to call this function
+  "Use user input function to create lines with gain line"
     (let ((out-line nil)) ;input line-func with #'[func-name]
       (loop for i from 0 to (- (length gain-line) 1) by 1
             do (push (funcall line-func ;g n x
@@ -389,40 +401,93 @@
                         line-color)
     (incf i)))))
 
+(defun points-func-line (image line-points relative-shape-line angle)
+  "Return list of points of function going over image"
+  (let ((i 0)
+        (p-list nil))
+    (imago:do-line-pixels (image color x y 
+                                 (first (first line-points));x1
+                                 (second (first line-points));y1
+                                 (first (second line-points))
+                                 (second (second line-points)))
+      (prog1
+          (push (list
+                  (x-func-add x (nth i relative-shape-line) angle)
+                  (y-func-add y (nth i relative-shape-line) angle))
+                p-list)
+        (incf i)))
+    p-list))
+
+(defun make-vector-loop (out-file line-points line-func g-up g-down base-img angle
+                          line-thickness line-color bg-color)
+  (with-open-file (filestream out-file :direction :output :if-exists :supersede
+                              :if-does-not-exist :create)
+    (write-svg-header filestream (list (imago:image-width base-img)
+                                       (imago:image-height base-img))
+                      (imago-color-to-hex bg-color)
+                      (imago-color-to-hex line-color)
+                      line-thickness)
+    (let ((line-index 0))
+      (dolist (p line-points)
+        (prog1
+            (add-line-to-svg
+              filestream
+              (points-func-line 
+                base-img
+                (flipPoints p)
+                (create-relative-line-static 
+                  line-func 
+                  (make-gain-line-linear g-up
+                                         g-down
+                                         base-img
+                                         p)
+                  line-index)
+                (sanitize-ang angle)))
+              (incf line-index)))
+      (write-svg-end filestream))))
+
 ;putting it all together
-(defun main-loop (base-img new-img num-lines angle offset g-up g-down
-                           line-func line-thickness line-color)
+(defun main-loop (base-img out-file num-lines angle offset g-up g-down
+                           line-func line-thickness line-color bg-color vectorize)
   (let* ((imgsize (list (imago:image-width base-img)
                         (imago:image-height base-img)))
          (line-points (gen-start-points num-lines
                                         (sanitize-ang angle)
                                         offset 
-                                        imgsize))
-         (line-index 0))
-    (dolist (p line-points)
-      (prog1 
-      (draw-func-line new-img (flipPoints p)
-                      (create-relative-line-static line-func 
-                                                    (make-gain-line-linear g-up
-                                                                           g-down
-                                                                           base-img
-                                                                           p)
-                                                    line-index)
-                      (sanitize-ang angle) line-thickness line-color)
-      (incf line-index)))))
+                                        imgsize)))
+    (if vectorize
+        (make-vector-loop out-file line-points line-func g-up g-down base-img angle
+                          line-thickness line-color bg-color)
+      (let ((new-img (imago:make-rgb-image
+                        (imago:image-width base-img)
+                        (imago:image-height base-img)
+                        bg-color))
+            (line-index 0))
+        (dolist (p line-points)
+          (prog1 
+              (draw-func-line new-img (flipPoints p)
+                              (create-relative-line-static line-func 
+                                                           (make-gain-line-linear g-up
+                                                                                  g-down
+                                                                                  base-img
+                                                                                  p)
+                                                           line-index)
+                              (sanitize-ang angle) line-thickness line-color)
+            (incf line-index)))
+        (imago:write-image new-img out-file)))
+    (format t "Image saved as: ~a~%" (namestring out-file))))
 
-
+(defun make-vector-p (filename)
+  (equalp "svg" 
+          (nth-value 1 (uiop:split-name-type (namestring filename)))))
 
 (defun img-waves (wave-func param-obj base-img) ;;main
   "Create a new image by using the function WAVE-FUNC over BASE-IMG with parameters"
-  (let* ((new-img (imago:make-rgb-image
-                    (imago:image-width base-img)
-                    (imago:image-height base-img)
-                    (slot-value param-obj 'bg-color)))
-         (out-file (get-out-filename (slot-value param-obj 'filename))))
+  (let ((out-file (get-out-filename (slot-value param-obj 'filename))))
     (when (slot-value param-obj 'img-invert)
       (invert-image base-img))
-    (main-loop base-img new-img
+    (main-loop base-img
+               out-file
                (slot-value param-obj 'n-lines)
                (slot-value param-obj 'angle)
                (slot-value param-obj 'offset)
@@ -430,13 +495,12 @@
                (slot-value param-obj 'g-down)
                wave-func
                (slot-value param-obj 'l-thickness)
-               (slot-value param-obj 'l-color))
-    (imago:write-image new-img out-file) ;move to main-loop?
-    (format t "image saved as: ~a~%" (namestring out-file))))
+               (slot-value param-obj 'l-color)
+               (slot-value param-obj 'bg-color)
+               (make-vector-p (slot-value param-obj 'filename)))))
 
 ;TODO: continue
 (defun start-program () ;start function for sbcl, read args then begin
-  (print *posix-argv*)
   (let ((prog-params (make-params))
         (input-img (parse-main-file *posix-argv* #'print-help)))
     (parse-args  
