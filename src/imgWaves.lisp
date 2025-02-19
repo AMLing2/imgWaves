@@ -29,8 +29,8 @@
   (format t "  -n, --num-lines <integer>    Set the number of lines.~%")
   (format t "  -o, --output-file <filename> Set the output image filename and filetype (default: png).~%")
   (format t "  -t, --line-offset <integer>  Set the offset of lines in the relative Y direction.~%")
-  (format t "  -b, --background-color <hex> Set the background color in the format \"#xRRGGBB.\"~%")
-  (format t "  -l, --line-color <hex>       Set the line color in the format \"#xRRGGBB.\"~%")
+  (format t "  -b, --background-color <hex> Set the background color in the format \"RRGGBB\"~%")
+  (format t "  -l, --line-color <hex>       Set the line color in the format \"RRGGBB\"~%")
   (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
   (format t "  -I                           Invert the image.~%")
   (format t "  -f, --function <filename>    Set a custom line function from a lisp program.~%")
@@ -52,16 +52,19 @@
     (degtorad (* (signum ang) 
                  (mod (abs ang) 360))))
 (defun hex-to-color (hex-str)
-  "convert a string of a hex value to imago:rgb-pixel type"
-  (if (or (equal (subseq hex-str 0 2) "#x")
-          (= (length hex-str) 8))
-      (let ((hex (subseq hex-str 2)))
+  "convert a string of a hex value in the format \"RRGGBB\" or \"#xRRGGBB\" to imago:rgb-pixel type"
+  (if (or (equal (subseq hex-str 0 2) "#x") ;might remove this
+          (= (length hex-str) 8)
+          (= (length hex-str) 6))
+      (let ((hex (if (= (length hex-str) 8)
+                     (subseq hex-str 2)
+                     hex-str)))
         (imago:make-color
           (parse-integer (subseq hex 0 2) :radix 16)
           (parse-integer (subseq hex 2 4) :radix 16)
           (parse-integer (subseq hex 4 6) :radix 16)))
       (progn
-        (format t "Expected hex color in format: #xRRGGBB, got: ~a~%" hex-str)
+        (format t "Expected hex color in format: RRGGBB, got: ~a~%" hex-str)
         (uiop:quit 1))))
 
 (defun left-pad-2 (str)
@@ -93,7 +96,7 @@
          (string= d-arg "ramp-down")) (setf (slot-value obj 'g-down) (stof val)))
 
     ;; Set the angle of lines ('a' short, 'angle' long)
-    ((or (string= d-arg "a") ;FIX: not updating for some reason?
+    ((or (string= d-arg "a")
          (string= d-arg "angle")) (setf (slot-value obj 'angle) (stof val)))
 
     ;; Set the number of lines ('n' short, 'num-lines' long)
@@ -202,7 +205,6 @@
     (> a (/ (* pi 3) 2))
     (< a (- (/ (* pi 3) 2))))) ;;wont work outside of [-2*pi to 2*pi]
 
-;FIX: divide by zero error here now?
 (defun linepoints-init (ang imgsize) ;surprisingly ang = 0 works, might add to cond
   "get points of line of angle (A + pi/2) which intersects lines of angle A from corners"
   ;three lines y = ax + c, y = bx + d1 (top), y = bx + d2 (bottom)
@@ -227,10 +229,10 @@
                    (- (/ (- (+ (* b cx) h) (* b w) (/ (* cy b) a))
                          (- 1 (/ b a)))))))))
 
-(defun linepoints-r (cx cy a imgsize) ;;a rounded version of linepoints, mavbe remove prev
+(defun linepoints-r (cx cy a imgsize) ;;a rounded version of original function
   (let* ((xval)
-         (y (if (on-right-side? a) ;WARN: use this or prev?
-               (prog1 ;prog1 returns first and runs both expr
+         (y (if (on-right-side? a)
+               (prog1
                    (line-y cx cy a (first imgsize)) ;right
                  (setq xval (first imgsize)))
               (prog1 
@@ -262,8 +264,6 @@
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
 
-;(gen-start-points-test 30 (degtorad 135) 0 (imago:make-rgb-image 500 300 imago:+white+)) ;PERF:
-
 (defun gen-start-points (line-num a offset imgsize)  ;;TODO: add offset, use for main func
   (let* ((imgsizefixed (mapAdd -1 imgsize))
          (p (init-line-points a imgsizefixed)) ;TODO: continue, test with -init and negatives
@@ -280,14 +280,12 @@
                          imgsizefixed))))
 
 ;;;;; Image processing - adding gain:
-;(gainline-test 5 gray-image 45 1) ;PERF: test here
 
-;(full-test 10 10 0 20 20 #'temp-sine-wave 1 nil)
 (defun add-gain (g up? index line) ; destructve modification of line list
   (unless (<= g 0.0)
     (let ((ind-move (if up? 1 -1))
           (cnt 0))
-      (loop for g-add downfrom 255 to 0 by g ;FIX: replace 255 -> (nth index line)?
+      (loop for g-add downfrom (nth index line) to 0 by g
             do (progn 
                  (setq cnt (+ cnt ind-move))
                  (if (or (> (+ index cnt) (- (list-length line) 1))
@@ -303,8 +301,8 @@
       (setq g (if (second i) g-up g-down))
       (add-gain g (second i) (first i) grayscale-line))))
 
-(defun find-color-jumps (grayscale-line)
-  (let ((prev (first grayscale-line))
+(defun find-color-jumps (grayscale-line) ;FIX: this function will sometimes place indexes which are right next to eacother, leading to the gain function being run across the same area twice
+  (let ((prev (first grayscale-line)) ;   a fix would be to check if previous would overwrite it by checking nth *prev* grayscale-line - g > nth *current* grayscale-line
         (current)
         (index-list nil))
     (loop for i from 1 to (- (length grayscale-line) 1) by 1
@@ -324,19 +322,21 @@
     (print (find-color-jumps test-list))))
 ;(find-color-jumps-test)
 
-(defun make-gain-line-linear (g-up g-down image line-point) ;finished? rename in the future maybe
-  (let ((g-list nil))
+(defun make-gain-line-linear (g-up g-down image line-point) ; rename in the future
+  (let ((g-list nil))                                       ; for both linear and smooth
     (imago:do-line-pixels (image color x y ;if 300x300 image then 0->299
                                  (first (first line-point))   ;x1
                                  (second (first line-point))  ;y1
                                  (first (second line-point))  ;x2
                                  (second (second line-point)));y2
       (push (logand color #x00FF) g-list)) ;should be ANDed with #x00FF?
-    (apply-gain-list g-up
-                     g-down
-                     (find-color-jumps g-list) ; this line works
-                     g-list); dont reverse, dosent seem to be destructive..
-    (values (reverse g-list))))                 ;a double reverse that might work well?
+    (when (or (> g-up 0.0)
+              (> g-down 0.0))
+      (apply-gain-list g-up
+                       g-down
+                       (find-color-jumps g-list) ; this line works
+                       g-list)); dont reverse, dosent seem to be destructive..
+    (values (reverse g-list))))                ;a double reverse that might work well?
 
 ;;;;; creating and reading shape for relative line:
 
@@ -361,7 +361,7 @@
 ;;;;; image:
 
 ; based on https://stackoverflow.com/a/1201227
-(defun draw-filled-circle (image x y r color) ;TODO: fix huge jump between r = 1 and 2?
+(defun draw-filled-circle (image x y r color)
   (let ((h 0))
     (loop for nx from (- r) to r by 1
            do (setq h (truncate (sqrt (- (* r r ) (* nx nx)))))

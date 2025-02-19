@@ -38,7 +38,7 @@
 (defun parse-last-file (arg-list help-func); ex: [PROGRAM] [OPTIONS] [FILE]
   (let ((last-val (first (reverse arg-list))))
         (cond ((or (= (length arg-list) 1) ;checked twice but keeping in case only this func is used
-                   (equalp (char last-val 0)
+                   (equalp (char last-val 0) ;FIX: should check if [second [reverse arg-list]] uses - not last?
                            (char "-" 0)))
                (progn
                  (format t "No file input ~%")
@@ -46,7 +46,7 @@
                  (uiop:quit 1)))
               ((not (file-exists-p last-val))
                (progn 
-                 (format t "Invalid file input ~%")
+                 (format t "Input file \"~a\" is invalid ~%" last-val)
                  (uiop:quit 1)))
               (t last-val))))
 
@@ -62,7 +62,7 @@
          (parse-last-file arg-list help-func)) ;check if file is at the end instead
         ((not (file-exists-p (second arg-list)))
               (progn 
-                (format t "Invalid file input ~%")
+                (format t "Input file \"~a\" is invalid ~%" (second arg-list))
                 (uiop:quit 1)))
         (t (second arg-list))))
   
@@ -97,7 +97,7 @@
           until (eq form :eof)
           collect form)))
 
-(defun get-wave-func (func-path func-arg-count) ;FIX: dosent output function type
+(defun get-wave-func (func-path func-arg-count)
   "get last defined function, return nil if no function defined"
   (unless (file-exists-p func-path)
     (format t "Invalid function file input ~%")

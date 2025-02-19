@@ -29,11 +29,6 @@ xmlns=\"http://www.w3.org/2000/svg\">
   "Write svg end tag"
   (format filestream "~%</svg>~%"))
 
-(defun svg-start (filename image-size bg-color line-color stroke) ;remove, not using?
-  (let ((filestream (open filename :DIRECTION :output)))
-    (write-svg-header filestream image-size bg-color line-color stroke)
-    filestream))
-
 (defun add-line-to-svg (filestream line-list)
   (format filestream "<polyline class=\"l-style\" points=\"~{~{~a~^,~}~^ ~}\"/>~%"
           line-list))
