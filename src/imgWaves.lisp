@@ -170,6 +170,11 @@
 ;  3 - run in terminal with no other args to open REPL with choosable options:
 ;    imgwaves /path/image
 
+(defmacro p-pos (xy-str n p-list) ;TODO: replace all [first [second p-list]] junk in file with this
+  (cond ((equalp xy-str "x") (list 'first  (list 'nth n p-list)))
+        ((equalp xy-str "y") (list 'second (list 'nth n p-list)))
+        (t (list 'first (list 'first p-list)))))
+
 (defun flipPoints (p-l)
   (list (second p-l) (first p-l)))
 
@@ -241,19 +246,21 @@
     (cond
       ((and (<= y (nth 1 imgsize))
             (>= y 0.0)) 
-       (list (round xval) (round y))) ;left / right
+       (print (list (round xval) (round y)))) ;left / right
       ((> y (nth 1 imgsize)) 
-        (list (round (line-x cx cy a (nth 1 imgsize))) (round (nth 1 imgsize)))) ; bottom
+        (print (list (round (line-x cx cy a (nth 1 imgsize))) (round (nth 1 imgsize))))) ; bottom
       ((< y 0.0) 
-       (list (round (line-x cx cy a 0.0)) 0))))) ;top
+       (print (list (round (line-x cx cy a 0.0)) 0)))))) ;top
 
 (defun init-line-points (a imgsize)
   (list (linepoints-init a imgsize)
         (linepoints-init (+ a pi) imgsize)))
 
-(defun start-end-points2 (cx cy a imgsize) ;with cx cy
-  (list (linepoints-r cx cy a imgsize)
-        (linepoints-r cx cy (+ a pi) imgsize)))
+(defun start-end-points2 (img l-cxcy a imgsize) ;with cx cy ;FIX: remove img
+  (print (list "start-end-points2" l-cxcy))
+  (drawpoints-filled l-cxcy img) ;FIX: REMOVE
+  (list (linepoints-r (first l-cxcy) (second l-cxcy) a imgsize)
+        (linepoints-r (first l-cxcy) (second l-cxcy) (+ a pi) imgsize)))
 
 (defun dist-between-points (p)
   (sqrt (+ (expt (- (first (second p))
@@ -264,20 +271,132 @@
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
 
-(defun gen-start-points (line-num a offset imgsize)  ;;TODO: add offset, use for main func
+; taken from https://stackoverflow.com/a/14416133
+(defun rmod (n min max)
+  (+ (mod (+ (mod (- n min) (- max min))
+             (- max min))
+          (- max min))
+     min))
+
+
+(defun add-offset (offset a limits1 imgsize l-cxcy) ;TODO: continue
+  "Add and return offset to an x or y value c and wrap if outside of image"
+  (print (list "limits:" limits1))
+  (let ((x-min (min 
+                 (p-pos "x" 0 limits1) (p-pos "x" 1 limits1))) ;replace with loop or move to gen-start-points? same calcs are done for every line its very inefficient
+        (x-max (max 
+                    (p-pos "x" 0 limits1) (p-pos "x" 1 limits1)))
+        (y-min (min 
+                 (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)))
+        (y-max (max 
+                    (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)))
+        (new-x (+ (first l-cxcy)  (* offset (sin a))))
+        (new-y (+ (second l-cxcy) (* offset (cos a)))))
+    (print (list "x-min" x-min "x-max" x-max "y-min" y-min "y-max" y-max "old-x" (first l-cxcy) "new-x" new-x "old-y" (second l-cxcy) "new-y" new-y))
+    (cond ((float-eq 0.0 (mod a (/ pi 2))) 
+           (list (+ x-min (mod new-x (- x-max x-min)))
+                 (+ y-min (mod new-y (- y-max y-min)))))
+           ((and 
+             (or (>= new-x (- x-max x-min)) ;check if both need to be wrapped
+                 (<= new-x x-min))
+             (or (>= new-y (- y-max y-min))
+                 (<= new-y y-min))) 
+           (progn (print (list "-------> case 1" (first limits1))) ;WARN: broken?
+                  (format t "~% start-x: ~f start-y: ~f add-x: ~f add-y: ~f"
+                          (p-pos "x" 0 limits1)
+                          (p-pos "y" 0 limits1)
+                          (mod new-x (- x-max x-min))
+                          (mod new-y (- y-max y-min)))
+                  (list (+ x-min (mod new-x x-max))
+                        (+ y-min (mod new-y y-max)))))
+           ((and 
+             (or (>= new-x x-max) ;both in an annoying place
+                 (<= new-x x-min))
+             (or (>= new-y y-max)
+                 (<= new-y y-min)))
+           (progn (format t "~%~c[33m---> case 4~c[0m" #\esc #\esc) ; still broken, see a = 30 t = 100
+                  (print (list (- x-min (mod new-x x-max))
+                        (+ y-min (mod new-y y-max))))))
+          ((or (> new-x x-max) ;only x
+               (< new-x x-min))
+           (progn (format t "~%~c[32m---> case 2~c[0m" #\esc #\esc) ; still broken, see a = 30 t = 100
+                  (print (list (+ x-min (/ (tan a) (mod new-y (- y-max y-min)))) 
+                               (+ y-min (mod new-y (- y-max y-min))))))) ;FIX: here
+          ((or (> new-y y-max) ; only y 
+               (< new-y y-min))
+           (progn (format t "~%~c[31m---> case 3~c[0m" #\esc #\esc) ; still broken, see a = 30 t = 100
+                  (print (list (+ x-min (mod new-x (- x-max x-min))) ;FIX: here? is this correct and case 1 is wrong?
+                               (+ y-min (/ (mod new-x (- x-max x-min)) (tan a)))))))
+          (t (list new-x new-y)))))
+
+(defun add-offset2 (offset a limits1 imgsize l-cxcy) ;FIX: remove, old
+  "Add and return offset to an x or y value c and wrap if outside of image"
+  (let* ((limits2 (init-line-points (- (/ pi 2) a) imgsize))) ; get max/min of reflection of A
+        (let ((x-min (min 0
+                          (p-pos "x" 0 limits1) (p-pos "x" 1 limits1) ;replace with loop or move to gen-start-points? same calcs are done for every line its very inefficient
+                          (p-pos "x" 0 limits2) (p-pos "x" 1 limits2)))
+              (x-max (max (first imgsize)
+                          (p-pos "x" 0 limits1) (p-pos "x" 1 limits1)
+                          (p-pos "x" 0 limits2) (p-pos "x" 1 limits2)))
+              (y-min (min 0
+                          (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)
+                          (p-pos "y" 0 limits2) (p-pos "y" 1 limits2)))
+              (y-max (max (second imgsize)
+                          (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)
+                          (p-pos "y" 0 limits2) (p-pos "y" 1 limits2)))
+              (new-x (+ (first l-cxcy)  (* offset (sin a))))
+              (new-y (+ (second l-cxcy) (* offset (cos a)))))
+          (print (list "x-min" x-min "x-max" x-max "y-min" y-min "y-max" y-max "old-x" (first l-cxcy) "new-x" new-x "old-y" (second l-cxcy) "new-y" new-y))
+          (cond ((and 
+                   (or (> new-x x-max) ;check if both need to be wrapped
+                       (< new-x x-min))
+                   (or (> new-y y-max)
+                       (< new-y y-min))) 
+                 (progn (print "---> case 1") ;FIX: broken
+                 (print (list (+ (rmod new-x x-min x-max) x-min)
+                              (+ (rmod new-y y-min y-max) x-min))
+                        )))
+                ((or (> new-x x-max) ;only x
+                     (< new-x x-min))
+                 (progn (print "---> case 2")
+                 (print (list (rmod new-x x-min x-max) ; seems to work fine?
+                       (+ (- new-y (* (cos a) (second imgsize))) y-min)))))
+                ((or (> new-y y-max) ; only y
+                     (< new-y y-min))
+                 (progn (print "--->case 3")
+                 (print (list (+ (- new-x (* (sin a) (first imgsize))) 
+                                 (* (sin a) 2 x-min)) ;FIX: this kind of works but not perfect
+                       (rmod new-y y-min y-max)))))
+                (t (list new-x new-y))))))
+(cos (degtorad 30))
+
+;;           FIX: REMOVE vvv
+(defun gen-start-points (img line-num a offset imgsize)
   (let* ((imgsizefixed (mapAdd -1 imgsize))
-         (p (init-line-points a imgsizefixed)) ;TODO: continue, test with -init and negatives
+         (p (init-line-points a imgsizefixed))
          (dist-x (/ (- (first (second p))
                    (first (first p))) (+ line-num 1)))
          (dist-y (/ (- (second (second p))
                    (second (first p))) (+ line-num 1))))
-    (loop for l from 1 to line-num by 1
-          collect (start-end-points2 (+ (* dist-x l)
-                           (first (first p))) 
-                         (+ (* dist-y l)
-                            (second (first p)))
-                         a
-                         imgsizefixed))))
+    (print p)
+    (if (= offset 0)
+        (loop for l from 1 to line-num by 1
+              collect (start-end-points2 img ;FIX: REMOVE
+                        (list (+ (* dist-x l) ;cx
+                                 (first (first p)))
+                              (+ (* dist-y l) ;cy
+                                 (second (first p))))
+                        a
+                        imgsizefixed))
+        (loop for l from 1 to line-num by 1
+              collect (start-end-points2 img ;FIX: REMOVE
+                        (add-offset offset a p imgsizefixed
+                                    (list (+ (* dist-x l) ;cx
+                                             (first (first p)))
+                                          (+ (* dist-y l) ;cy
+                                             (second (first p)))))
+                                    a
+                                    imgsizefixed)))))
 
 ;;;;; Image processing - adding gain:
 
@@ -451,18 +570,18 @@
                            line-func line-thickness line-color bg-color vectorize)
   (let* ((imgsize (list (imago:image-width base-img)
                         (imago:image-height base-img)))
-         (line-points (gen-start-points num-lines
+         (new-img (imago:make-rgb-image ;FIX: MOVE TO SECOND LET
+                    (imago:image-width base-img)
+                    (imago:image-height base-img)
+                    bg-color))
+         (line-points (gen-start-points new-img num-lines ;FIX: REMOVE new-img
                                         (sanitize-ang angle)
                                         offset 
                                         imgsize)))
     (if vectorize
         (make-vector-loop out-file line-points line-func g-up g-down base-img angle
                           line-thickness line-color bg-color)
-      (let ((new-img (imago:make-rgb-image
-                        (imago:image-width base-img)
-                        (imago:image-height base-img)
-                        bg-color))
-            (line-index 0))
+      (let ((line-index 0))
         (dolist (p line-points)
           (prog1 
               (draw-func-line new-img (flipPoints p)
@@ -519,6 +638,8 @@
 
 
 
+(defun drawpoints-filled (p image) ;FIX: TEST, REMOVE ALL REFERENCES TO
+      (draw-filled-circle image (round (first p)) (round (second p)) 30 imago:+green+))
 
 ;;image tests:
 ;NOTE: all of this will be moved later
