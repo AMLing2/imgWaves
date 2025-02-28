@@ -297,27 +297,14 @@
            (list (+ x-min (mod new-x (- x-max x-min)))
                  (+ y-min (mod new-y (- y-max y-min)))))
            ((and 
-             (or (>= new-x (- x-max x-min)) ;check if both need to be wrapped
-                 (<= new-x x-min))
-             (or (>= new-y (- y-max y-min))
-                 (<= new-y y-min))) 
-           (progn (print (list "-------> case 1" (first limits1))) ;WARN: broken?
-                  (format t "~% start-x: ~f start-y: ~f add-x: ~f add-y: ~f"
-                          (p-pos "x" 0 limits1)
-                          (p-pos "y" 0 limits1)
-                          (mod new-x (- x-max x-min))
-                          (mod new-y (- y-max y-min)))
-                  (list (+ x-min (mod new-x x-max))
-                        (+ y-min (mod new-y y-max)))))
-           ((and 
              (or (>= new-x x-max) ;both in an annoying place
                  (<= new-x x-min))
              (or (>= new-y y-max)
                  (<= new-y y-min)))
-           (progn (format t "~%~c[33m---> case 4~c[0m" #\esc #\esc) ; still broken, see a = 30 t = 100
-                  (print (list (- x-min (mod new-x x-max))
-                        (+ y-min (mod new-y y-max))))))
-          ((or (> new-x x-max) ;only x
+           (progn (format t "~%~c[33m---> case 1~c[0m" #\esc #\esc) ; still broken, see a = 30 t = 100
+                  (print (list (+ x-min (mod new-x x-max))
+                               (+ y-min (mod new-y y-max))))))
+          ((or (> new-x x-max) ;only x never seems to hit this?
                (< new-x x-min))
            (progn (format t "~%~c[32m---> case 2~c[0m" #\esc #\esc) ; still broken, see a = 30 t = 100
                   (print (list (+ x-min (/ (tan a) (mod new-y (- y-max y-min)))) 
