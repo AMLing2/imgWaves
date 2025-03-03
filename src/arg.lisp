@@ -86,7 +86,7 @@
                  (find (nth-value 1 (uiop:split-name-type (namestring filename)))
                   usable-filetypes
                   :test #'equal))
-      (format t "Unexpected output filetype, got: ~a, expected: ~{~a~^, ~}"
+      (format t "Unexpected output filetype, got: ~a, expected: ~{~a~^, ~}~%"
               (nth-value 1 (uiop:split-name-type (namestring filename)))
               usable-filetypes)
       (uiop:quit 1)))
@@ -97,7 +97,7 @@
            (values newfile T))
           ((uiop:directory-pathname-p newfile) ;check if directory
            (progn
-             (format t "Chosen output filename: ~a is a directory and not a file"
+             (format t "Chosen output filename: ~a is a directory and not a file~%"
                      filename)
              (uiop:quit 1)))
           (t (values newfile nil))))) ; is new file

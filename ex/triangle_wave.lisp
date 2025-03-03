@@ -1,5 +1,5 @@
-(defconstant +amplitude+ 40)
-(defconstant +raise+ 20)
+(defconstant +amplitude+ 20)
+(defconstant +raise+ 10)
 (defconstant +period+ 40)
 
 (defun triangle (g n x)

@@ -32,7 +32,7 @@
   (format t "  -t, --line-offset <integer>  Set the offset of lines in the relative Y direction.~%")
   (format t "  -T, --fix-gap                Add a new line to fix the gap created by the offset.~%")
   (format t "  -b, --background-color <hex> Set the background color in the format \"RRGGBB\"~%")
-  (format t "  -l, --line-color <hex>       Set the line color in the format \"RRGGBB\"~%")
+  (format t "  -c, --line-color <hex>       Set the line color in the format \"RRGGBB\"~%")
   (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
   (format t "  -I                           Invert the image.~%")
   (format t "  -f, --function <filename>    Set a custom line function from a lisp program.~%")
@@ -126,7 +126,7 @@
          (string= d-arg "background-color")) (setf (slot-value obj 'bg-color) (hex-to-color val)))
 
     ;; Set the line color ('l' short, 'line-color' long)
-    ((or (string= d-arg "l")
+    ((or (string= d-arg "c")
          (string= d-arg "line-color")) (setf (slot-value obj 'l-color) (hex-to-color val)))
 
     ;; Set the line thickness ('L' short, 'line-thickness' long)
@@ -155,7 +155,7 @@
 ;;; -t = offset of lines in relative Y direction
 ;;; -T = add extra line to fix offset gap
 ;;; -b = background colour, hex
-;;; -l = line colour, hex
+;;; -c = line colour, hex
 ;;; -L = line thickness, int
 ;;; -c = image colour, hex, this option will append the image behind the lines, black by default
 ;;; -s = size of output image WWWWxHHHH 
@@ -264,7 +264,7 @@
 
 (defun start-end-points2 (l-cxcy a imgsize) ;with cx cy
   (list (linepoints-r (first l-cxcy) (second l-cxcy) a imgsize)
-        (linepoints-r (first l-cxcy) (second l-cxcy) (+ a pi) imgsize)))
+        (linepoints-r (first l-cxcy) (second l-cxcy) (clamp-ang-rad (+ a pi)) imgsize)))
 
 (defun dist-between-points (p)
   (sqrt (+ (expt (- (p-pos "x" 1 p)
@@ -306,7 +306,7 @@
                           (mod (- new-y y-min) (- (- y-max y-min)))))))
     (list new-x new-y)))
 
-(defun gen-start-points (line-num a offset imgsize fix-gap-p)
+(defun gen-start-points (line-num a offset imgsize fix-gap-p) ;FIX: issue at 271+ angles
   (let* ((imgsizefixed (mapAdd -1 imgsize))
          (p (init-line-points a imgsizefixed))
          (dist-x (/ (- (p-pos "x" 1 p)
@@ -354,7 +354,7 @@
       (setq g (if (second i) g-up g-down))
       (add-gain g (second i) (first i) grayscale-line))))
 
-(defun find-color-jumps (grayscale-line) ;FIX: this function will sometimes place indexes which are right next to eacother, leading to the gain function being run across the same area twice
+(defun find-color-jumps (grayscale-line) ;NOTE: this function will sometimes place indexes which are right next to eacother, leading to the gain function being run across the same area twice
   (let ((prev (first grayscale-line)) ;   a fix would be to check if previous would overwrite it by checking nth *prev* grayscale-line - g > nth *current* grayscale-line
         (current)
         (index-list nil))
@@ -433,18 +433,18 @@
 (defun draw-func-line (image line-points relative-shape-line angle
                              line-thickness line-color)
   (let ((i 0))
-  (imago:do-line-pixels (image color x y 
-                               (p-pos "x" 0 line-points);x1
-                               (p-pos "y" 0 line-points);y1
-                               (p-pos "x" 1 line-points)
-                               (p-pos "y" 1 line-points))
-    (prog1
-    (draw-filled-circle image
-                        (x-func-add x (nth i relative-shape-line) angle)
-                        (y-func-add y (nth i relative-shape-line) angle)
-                        line-thickness
-                        line-color)
-    (incf i)))))
+    (imago:do-line-pixels (image color x y 
+                                 (p-pos "x" 0 line-points);x1
+                                 (p-pos "y" 0 line-points);y1
+                                 (p-pos "x" 1 line-points)
+                                 (p-pos "y" 1 line-points))
+      (prog1
+          (draw-filled-circle image
+                              (x-func-add x (nth i relative-shape-line) angle)
+                              (y-func-add y (nth i relative-shape-line) angle)
+                              line-thickness
+                              line-color)
+        (incf i)))))
 
 (defun points-func-line (image line-points relative-shape-line angle)
   "Return list of points of function going over image"
@@ -500,6 +500,7 @@
                                         offset 
                                         imgsize
                                         fix-gap-p)))
+    (print line-points)
     (if vectorize
         (make-vector-loop out-file line-points line-func g-up g-down base-img angle
                           line-thickness line-color bg-color)
@@ -515,7 +516,7 @@
                                                            (make-gain-line-linear g-up
                                                                                   g-down
                                                                                   base-img
-                                                                                  p)
+                                                                                  p) ;FIX: prob
                                                            line-index)
                               (sanitize-ang angle) line-thickness line-color)
             (incf line-index)))
