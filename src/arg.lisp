@@ -3,20 +3,31 @@
 ;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "5"))
 
 (defun first-is-dash? (arg); dont need to check if string type, *posix-argv* uses strings only
-  (equalp (char arg 0)
-          (char "-" 0)))
+  "check if first char is a dash but second char is not a number"
+  (and (equalp (char arg 0)
+           #\-)
+       (> (length arg) 1)
+       (equalp nil (digit-char-p (char arg 1)))))
 
 (defun get-arg-val (arg-list)
   (unless (<= (list-length arg-list) 1)
     (unless (first-is-dash? (second arg-list))
       (second arg-list))))
 
+(defun remove-leading-dash (str)
+  "remove leading dashes from a string"
+  (let ((index 0))
+    (loop while (and (< index (length str))
+                     (char= (char str index) #\-))
+          do (incf index))
+    (subseq str index)))
+
 (defun split-arg (inString) ;;allows options such as -Rr and 
-  "return list of split argument for combinations such as -ab, passes --long_arg as unsplit string"
+  "return list of split argument for combinations such as -ab, passes --long-arg as unsplit string"
   (if (and (first-is-dash? inString)
            (equalp (char inString 1)
-                   (char "-" 0)))
-      (list (remove #\- inString)) ;if --long_arg, will remove --long-arg names, change?
+                   #\-))
+      (list (remove-leading-dash inString)) ;if --long-arg, will remove --long-arg names, change?
       (loop for char across (remove #\- inString)
             collect (string char))))
 
@@ -39,7 +50,7 @@
   (let ((last-val (first (reverse arg-list))))
         (cond ((or (= (length arg-list) 1) ;checked twice but keeping in case only this func is used
                    (equalp (char last-val 0) ;FIX: should check if [second [reverse arg-list]] uses - not last?
-                           (char "-" 0)))
+                           #\-))
                (progn
                  (format t "No file input ~%")
                  (funcall help-func)
@@ -58,7 +69,7 @@
            (funcall help-func)
            (uiop:quit 1)))
         ((equalp (char (second arg-list) 0)
-                 (char "-" 0)) 
+                 #\-) 
          (parse-last-file arg-list help-func)) ;check if file is at the end instead
         ((not (file-exists-p (second arg-list)))
               (progn 
@@ -118,6 +129,7 @@
                func-arg-count 
                last-args-count))))
 
+;;example usage:
 ;(defun arg-example (dash-arg val)
 ;  (format t (list "dash:" (string dash-arg) "val:" (string val)))
 ;  (cond 

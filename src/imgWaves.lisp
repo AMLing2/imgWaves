@@ -88,7 +88,7 @@
   (cond
     ;; help message
     ((or (string= d-arg "h")
-         (string= d-arg "help"))
+         (string= d-arg "help")) ;SBCL's help message shows up before this...
      (print-help)
      (uiop:quit 0))
 
@@ -137,7 +137,8 @@
     ((string= d-arg "I") (setf (slot-value obj 'img-invert) T))
 
     ;; set value to fix gap to true
-    ((string= d-arg "T") (setf (slot-value obj 'fix-gap) T))
+    ((or (string= d-arg "T")
+         (string= d-arg "fix-gap")) (setf (slot-value obj 'fix-gap) T))
 
     ;; Handle unknown arguments
     (t (format t "Unknown argument provided: ~a~%" d-arg)
@@ -177,7 +178,7 @@
 ;  3 - run in terminal with no other args to open REPL with choosable options:
 ;    imgwaves /path/image
 
-(defmacro p-pos (xy-str n p-list) ;TODO: replace all [first [second p-list]] junk in file with this
+(defmacro p-pos (xy-str n p-list)
   (cond ((equalp xy-str "x") (list 'first  (list 'nth n p-list)))
         ((equalp xy-str "y") (list 'second (list 'nth n p-list)))
         (t (list 'first (list 'first p-list)))))
@@ -282,7 +283,7 @@
           (- max min))
      min))
 
-(defun add-offset (offset a limits1 imgsize l-cxcy)
+(defun add-offset (offset a limits1 l-cxcy)
   "Add and return offset to an x or y value c and wrap if outside of image"
   ;(print (list "limits:" limits1))
   ;replace with loop or move to gen-start-points? same calcs are done for every line its very inefficient
@@ -293,7 +294,7 @@
         (new-x (+ (first l-cxcy)  (* offset (sin a))))
         (new-y (+ (second l-cxcy) (* offset (cos a)))))
     ;(print (list "x-min" x-min "x-max" x-max "y-min" y-min "y-max" y-max "old-x" (first l-cxcy) "new-x" new-x "old-y" (second l-cxcy) "new-y" new-y))
-    (cond ((>= new-x x-max) (setq new-x (+ (p-pos "x" 0 limits1) ;FIX: this one is bad at double wrap
+    (cond ((>= new-x x-max) (setq new-x (+ (p-pos "x" 0 limits1) ;FIX: this val breaks at double wrap
                                            (mod new-x x-max))))
           ((<= new-x x-min)
            (setq new-x (+ (p-pos "x" 0 limits1)
@@ -314,7 +315,6 @@
                    (p-pos "x" 0 p)) (+ line-num 1)))
          (dist-y (/ (- (p-pos "y" 1 p)
                    (p-pos "y" 0 p)) (+ line-num 1))))
-    ;(print p)
     (if (= offset 0)
         (loop for l from 1 to line-num by 1
               collect (start-end-points2 img ;FIX: REMOVE IMG
@@ -326,7 +326,7 @@
                         imgsizefixed))
         (loop for l from 1 to (+ line-num (if fix-gap-p 1 0)) by 1
               collect (start-end-points2 img ;FIX: REMOVE IMG
-                        (add-offset offset a p imgsizefixed
+                        (add-offset offset a p
                                     (list (+ (* dist-x l) ;cx
                                              (p-pos "x" 0 p))
                                           (+ (* dist-y l) ;cy
@@ -376,14 +376,14 @@
                                  (p-pos "y" 0 line-point)  ;y1
                                  (p-pos "x" 1 line-point)  ;x2
                                  (p-pos "y" 1 line-point)) ;y2
-      (push (logand color #x00FF) g-list)) ;should be ANDed with #x00FF?
+      (push (logand color #x00FF) g-list)) ; ANDed with #x00FF to get grayscale
     (when (or (> g-up 0.0)
               (> g-down 0.0))
       (apply-gain-list g-up
                        g-down
-                       (find-color-jumps g-list) ; this line works
-                       g-list)); dont reverse, dosent seem to be destructive..
-    (values (reverse g-list))))                ;a double reverse that might work well?
+                       (find-color-jumps g-list)
+                       g-list)) 
+    (values (reverse g-list))))  
 
 ;;;;; creating and reading shape for relative line:
 
@@ -418,7 +418,7 @@
                                    (+ x nx)
                                    (+ y ny)
                                    color)))
-    (imago:draw-circle image x y r color))) ;smoothen edges
+    (imago:draw-circle image x y r color))) ;smooth edges
 
 (defun invert-image (image) ; imago:invert dosen't exist?
   (imago:do-image-pixels (image gray-col x y)
@@ -493,7 +493,6 @@
               (incf line-index)))
       (write-svg-end filestream))))
 
-;putting it all together
 (defun main-loop (base-img out-file num-lines angle offset g-up g-down
                            line-func line-thickness line-color bg-color vectorize fix-gap-p)
   (let* ((imgsize (list (imago:image-width base-img)
@@ -510,7 +509,7 @@
     (if vectorize
         (make-vector-loop out-file line-points line-func g-up g-down base-img angle
                           line-thickness line-color bg-color)
-      (let ((line-index 0))
+      (let ((line-index 0)) ;FIX: move make-rgb-image to here
         (dolist (p line-points)
           (prog1 
               (draw-func-line new-img (flipPoints p)
@@ -548,7 +547,8 @@
                (make-vector-p (slot-value param-obj 'filename))
                (slot-value param-obj 'fix-gap))))
 
-(defun start-program () ;start function for sbcl, read args then begin
+(defun start-program ()
+  "main start function for sbcl, read args and begin"
   (let ((prog-params (make-params))
         (input-img (parse-main-file *posix-argv* #'print-help)))
     (parse-args  
@@ -559,10 +559,6 @@
                prog-params
                (imago:convert-to-grayscale
                  (imago:read-image input-img)))))
-
-;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "5"))
-;*POSIX-ARGV*
-;(start-program)
 
 (defun drawpoints-filled (p image) ;FIX: TEST, REMOVE ALL REFERENCES TO
       (draw-filled-circle image (round (first p)) (round (second p)) 30 imago:+green+))
