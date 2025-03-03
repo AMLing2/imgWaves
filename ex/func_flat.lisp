@@ -1,2 +1,5 @@
+(defconstant +raise+ 30)
+
 (defun no-wave (g n x)
-  (* g 20))
+  (declare (ignore n x))
+  (* g +raise+))

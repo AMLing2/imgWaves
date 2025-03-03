@@ -262,8 +262,7 @@
   (list (linepoints-init a imgsize)
         (linepoints-init (+ a pi) imgsize)))
 
-(defun start-end-points2 (img l-cxcy a imgsize) ;with cx cy ;FIX: remove img
-  (drawpoints-filled l-cxcy img) ;FIX: REMOVE
+(defun start-end-points2 (l-cxcy a imgsize) ;with cx cy
   (list (linepoints-r (first l-cxcy) (second l-cxcy) a imgsize)
         (linepoints-r (first l-cxcy) (second l-cxcy) (+ a pi) imgsize)))
 
@@ -307,8 +306,7 @@
                           (mod (- new-y y-min) (- (- y-max y-min)))))))
     (list new-x new-y)))
 
-;;           FIX: REMOVE vvv
-(defun gen-start-points (img line-num a offset imgsize fix-gap-p)
+(defun gen-start-points (line-num a offset imgsize fix-gap-p)
   (let* ((imgsizefixed (mapAdd -1 imgsize))
          (p (init-line-points a imgsizefixed))
          (dist-x (/ (- (p-pos "x" 1 p)
@@ -317,7 +315,7 @@
                    (p-pos "y" 0 p)) (+ line-num 1))))
     (if (= offset 0)
         (loop for l from 1 to line-num by 1
-              collect (start-end-points2 img ;FIX: REMOVE IMG
+              collect (start-end-points2
                         (list (+ (* dist-x l) ;cx
                                  (p-pos "x" 0 p))
                               (+ (* dist-y l) ;cy
@@ -325,7 +323,7 @@
                         a
                         imgsizefixed))
         (loop for l from 1 to (+ line-num (if fix-gap-p 1 0)) by 1
-              collect (start-end-points2 img ;FIX: REMOVE IMG
+              collect (start-end-points2
                         (add-offset offset a p
                                     (list (+ (* dist-x l) ;cx
                                              (p-pos "x" 0 p))
@@ -497,11 +495,7 @@
                            line-func line-thickness line-color bg-color vectorize fix-gap-p)
   (let* ((imgsize (list (imago:image-width base-img)
                         (imago:image-height base-img)))
-         (new-img (imago:make-rgb-image ;FIX: MOVE TO SECOND LET
-                    (imago:image-width base-img)
-                    (imago:image-height base-img)
-                    bg-color))
-         (line-points (gen-start-points new-img num-lines ;FIX: REMOVE new-img
+         (line-points (gen-start-points num-lines
                                         (sanitize-ang angle)
                                         offset 
                                         imgsize
@@ -509,7 +503,11 @@
     (if vectorize
         (make-vector-loop out-file line-points line-func g-up g-down base-img angle
                           line-thickness line-color bg-color)
-      (let ((line-index 0)) ;FIX: move make-rgb-image to here
+      (let ((line-index 0)
+            (new-img (imago:make-rgb-image
+                       (imago:image-width base-img)
+                       (imago:image-height base-img)
+                       bg-color)))
         (dolist (p line-points)
           (prog1 
               (draw-func-line new-img (flipPoints p)
@@ -559,7 +557,4 @@
                prog-params
                (imago:convert-to-grayscale
                  (imago:read-image input-img)))))
-
-(defun drawpoints-filled (p image) ;FIX: TEST, REMOVE ALL REFERENCES TO
-      (draw-filled-circle image (round (first p)) (round (second p)) 30 imago:+green+))
 
