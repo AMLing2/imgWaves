@@ -17,6 +17,7 @@
   (l-color imago:+black+ :type imago:rgb-pixel)
   (bg-color imago:+white+ :type imago:rgb-pixel)
   (img-invert nil :type boolean)
+  (fix-gap nil :type boolean)
   (in-func #'base-sine-wave :type function)
   (filename #p"./out.png" :type pathname))
 
@@ -29,6 +30,7 @@
   (format t "  -n, --num-lines <integer>    Set the number of lines.~%")
   (format t "  -o, --output-file <filename> Set the output image filename and filetype (default: png).~%")
   (format t "  -t, --line-offset <integer>  Set the offset of lines in the relative Y direction.~%")
+  (format t "  -T, --fix-gap                Add a new line to fix the gap created by the offset.~%")
   (format t "  -b, --background-color <hex> Set the background color in the format \"RRGGBB\"~%")
   (format t "  -l, --line-color <hex>       Set the line color in the format \"RRGGBB\"~%")
   (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
@@ -84,8 +86,9 @@
 
 (defmethod fill-from-args ((obj params) d-arg val)
   (cond
-    ((or (string= d-arg "-h")
-         (string= d-arg "--help"))
+    ;; help message
+    ((or (string= d-arg "h")
+         (string= d-arg "help"))
      (print-help)
      (uiop:quit 0))
 
@@ -133,6 +136,9 @@
     ;; set value to invert the image to true
     ((string= d-arg "I") (setf (slot-value obj 'img-invert) T))
 
+    ;; set value to fix gap to true
+    ((string= d-arg "T") (setf (slot-value obj 'fix-gap) T))
+
     ;; Handle unknown arguments
     (t (format t "Unknown argument provided: ~a~%" d-arg)
        (print-help)
@@ -146,6 +152,7 @@
 ;;; -i / base = input image
 ;;; -o = output image and filetype (png default)
 ;;; -t = offset of lines in relative Y direction
+;;; -T = add extra line to fix offset gap
 ;;; -b = background colour, hex
 ;;; -l = line colour, hex
 ;;; -L = line thickness, int
@@ -180,9 +187,7 @@
 
 (defun clamp-ang-rad (ang)
   "run mod 2 pi and preserve sign"
-  (let ((ang-sign (/ ang (abs ang))))
-    (* ang-sign  ;FIX: wtf? replace with signum?
-       (mod (abs ang) (* 2 pi)))))
+    (* (signum ang) (mod (abs ang) (* 2 pi))))
 
 (defun float-eq (a b)
   "compare if two floating point numbers are within a tolerence to eachother"
@@ -193,7 +198,7 @@
               (ceiling (* 2 (/ (clamp-ang-rad a) pi)))
               (ceiling (* 2 (/ (+ (clamp-ang-rad a) (* 2 pi)) pi))))))
     (if (= n 0) 1 n))) ;for when a = -2pi
-;;;; this function should return ONLY start points (list x1 y1) as well as no jump going from a = 89 to 90 to 91
+
 (defun line-x (cx cy a y)
   (+ cx (* (tan (+ a (/ pi 2))) 
            (- y cy))))
@@ -246,27 +251,26 @@
     (cond
       ((and (<= y (nth 1 imgsize))
             (>= y 0.0)) 
-       (print (list (round xval) (round y)))) ;left / right
+       (list (round xval) (round y))) ;left / right
       ((> y (nth 1 imgsize)) 
-        (print (list (round (line-x cx cy a (nth 1 imgsize))) (round (nth 1 imgsize))))) ; bottom
+        (list (round (line-x cx cy a (nth 1 imgsize))) (round (nth 1 imgsize)))) ; bottom
       ((< y 0.0) 
-       (print (list (round (line-x cx cy a 0.0)) 0)))))) ;top
+       (list (round (line-x cx cy a 0.0)) 0))))) ;top
 
 (defun init-line-points (a imgsize)
   (list (linepoints-init a imgsize)
         (linepoints-init (+ a pi) imgsize)))
 
 (defun start-end-points2 (img l-cxcy a imgsize) ;with cx cy ;FIX: remove img
-  (print (list "start-end-points2" l-cxcy))
   (drawpoints-filled l-cxcy img) ;FIX: REMOVE
   (list (linepoints-r (first l-cxcy) (second l-cxcy) a imgsize)
         (linepoints-r (first l-cxcy) (second l-cxcy) (+ a pi) imgsize)))
 
 (defun dist-between-points (p)
-  (sqrt (+ (expt (- (first (second p))
-                    (first (first p))) 2)
-           (expt (- (second (second p))
-                    (second (first p))) 2))))
+  (sqrt (+ (expt (- (p-pos "x" 1 p)
+                    (p-pos "x" 0 p)) 2)
+           (expt (- (p-pos "y" 1 p)
+                    (p-pos "y" 0 p)) 2))))
 
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
@@ -278,9 +282,9 @@
           (- max min))
      min))
 
-(defun add-offset (offset a limits1 imgsize l-cxcy) ;TODO: continue
+(defun add-offset (offset a limits1 imgsize l-cxcy)
   "Add and return offset to an x or y value c and wrap if outside of image"
-  (print (list "limits:" limits1))
+  ;(print (list "limits:" limits1))
   ;replace with loop or move to gen-start-points? same calcs are done for every line its very inefficient
   (let ((x-min (min (p-pos "x" 0 limits1) (p-pos "x" 1 limits1))) 
         (x-max (max (p-pos "x" 0 limits1) (p-pos "x" 1 limits1)))
@@ -288,7 +292,7 @@
         (y-max (max (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)))
         (new-x (+ (first l-cxcy)  (* offset (sin a))))
         (new-y (+ (second l-cxcy) (* offset (cos a)))))
-    (print (list "x-min" x-min "x-max" x-max "y-min" y-min "y-max" y-max "old-x" (first l-cxcy) "new-x" new-x "old-y" (second l-cxcy) "new-y" new-y))
+    ;(print (list "x-min" x-min "x-max" x-max "y-min" y-min "y-max" y-max "old-x" (first l-cxcy) "new-x" new-x "old-y" (second l-cxcy) "new-y" new-y))
     (cond ((>= new-x x-max) (setq new-x (+ (p-pos "x" 0 limits1) ;FIX: this one is bad at double wrap
                                            (mod new-x x-max))))
           ((<= new-x x-min)
@@ -303,30 +307,30 @@
     (list new-x new-y)))
 
 ;;           FIX: REMOVE vvv
-(defun gen-start-points (img line-num a offset imgsize)
+(defun gen-start-points (img line-num a offset imgsize fix-gap-p)
   (let* ((imgsizefixed (mapAdd -1 imgsize))
          (p (init-line-points a imgsizefixed))
-         (dist-x (/ (- (first (second p))
-                   (first (first p))) (+ line-num 1)))
-         (dist-y (/ (- (second (second p))
-                   (second (first p))) (+ line-num 1))))
-    (print p)
+         (dist-x (/ (- (p-pos "x" 1 p)
+                   (p-pos "x" 0 p)) (+ line-num 1)))
+         (dist-y (/ (- (p-pos "y" 1 p)
+                   (p-pos "y" 0 p)) (+ line-num 1))))
+    ;(print p)
     (if (= offset 0)
         (loop for l from 1 to line-num by 1
-              collect (start-end-points2 img ;FIX: REMOVE
+              collect (start-end-points2 img ;FIX: REMOVE IMG
                         (list (+ (* dist-x l) ;cx
-                                 (first (first p)))
+                                 (p-pos "x" 0 p))
                               (+ (* dist-y l) ;cy
-                                 (second (first p))))
+                                 (p-pos "y" 0 p)))
                         a
                         imgsizefixed))
-        (loop for l from 1 to (+ line-num 1) by 1
-              collect (start-end-points2 img ;FIX: REMOVE
+        (loop for l from 1 to (+ line-num (if fix-gap-p 1 0)) by 1
+              collect (start-end-points2 img ;FIX: REMOVE IMG
                         (add-offset offset a p imgsizefixed
                                     (list (+ (* dist-x l) ;cx
-                                             (first (first p)))
+                                             (p-pos "x" 0 p))
                                           (+ (* dist-y l) ;cy
-                                             (second (first p)))))
+                                             (p-pos "y" 0 p))))
                                     a
                                     imgsizefixed)))))
 
@@ -365,21 +369,13 @@
                (setq prev current)))
     (values index-list)))
 
-;find-color-jumps test, temp
-(defun find-color-jumps-test () ;finished i think FIX: remove
-  (let ((test-list (fill (make-list 200 :initial-element 0)
-                         255 :start 120 :end 160)))
-; if &KEY, this means you need to use :name to fill in the variables as they are
-    (print (find-color-jumps test-list))))
-;(find-color-jumps-test)
-
 (defun make-gain-line-linear (g-up g-down image line-point) ; rename in the future
   (let ((g-list nil))                                       ; for both linear and smooth
     (imago:do-line-pixels (image color x y ;if 300x300 image then 0->299
-                                 (first (first line-point))   ;x1
-                                 (second (first line-point))  ;y1
-                                 (first (second line-point))  ;x2
-                                 (second (second line-point)));y2
+                                 (p-pos "x" 0 line-point)  ;x1
+                                 (p-pos "y" 0 line-point)  ;y1
+                                 (p-pos "x" 1 line-point)  ;x2
+                                 (p-pos "y" 1 line-point)) ;y2
       (push (logand color #x00FF) g-list)) ;should be ANDed with #x00FF?
     (when (or (> g-up 0.0)
               (> g-down 0.0))
@@ -440,10 +436,10 @@
                              line-thickness line-color)
   (let ((i 0))
   (imago:do-line-pixels (image color x y 
-                               (first (first line-points));x1
-                               (second (first line-points));y1
-                               (first (second line-points))
-                               (second (second line-points)))
+                               (p-pos "x" 0 line-points);x1
+                               (p-pos "y" 0 line-points);y1
+                               (p-pos "x" 1 line-points)
+                               (p-pos "y" 1 line-points))
     (prog1
     (draw-filled-circle image
                         (x-func-add x (nth i relative-shape-line) angle)
@@ -457,10 +453,10 @@
   (let ((i 0)
         (p-list nil))
     (imago:do-line-pixels (image color x y 
-                                 (first (first line-points));x1
-                                 (second (first line-points));y1
-                                 (first (second line-points))
-                                 (second (second line-points)))
+                                 (p-pos "x" 0 line-points);x1
+                                 (p-pos "y" 0 line-points);y1
+                                 (p-pos "x" 1 line-points)
+                                 (p-pos "y" 1 line-points))
       (prog1
           (push (list
                   (x-func-add x (nth i relative-shape-line) angle)
@@ -499,7 +495,7 @@
 
 ;putting it all together
 (defun main-loop (base-img out-file num-lines angle offset g-up g-down
-                           line-func line-thickness line-color bg-color vectorize)
+                           line-func line-thickness line-color bg-color vectorize fix-gap-p)
   (let* ((imgsize (list (imago:image-width base-img)
                         (imago:image-height base-img)))
          (new-img (imago:make-rgb-image ;FIX: MOVE TO SECOND LET
@@ -509,7 +505,8 @@
          (line-points (gen-start-points new-img num-lines ;FIX: REMOVE new-img
                                         (sanitize-ang angle)
                                         offset 
-                                        imgsize)))
+                                        imgsize
+                                        fix-gap-p)))
     (if vectorize
         (make-vector-loop out-file line-points line-func g-up g-down base-img angle
                           line-thickness line-color bg-color)
@@ -548,9 +545,9 @@
                (slot-value param-obj 'l-thickness)
                (slot-value param-obj 'l-color)
                (slot-value param-obj 'bg-color)
-               (make-vector-p (slot-value param-obj 'filename)))))
+               (make-vector-p (slot-value param-obj 'filename))
+               (slot-value param-obj 'fix-gap))))
 
-;TODO: continue
 (defun start-program () ;start function for sbcl, read args then begin
   (let ((prog-params (make-params))
         (input-img (parse-main-file *posix-argv* #'print-help)))
@@ -567,137 +564,6 @@
 ;*POSIX-ARGV*
 ;(start-program)
 
-
-
-
 (defun drawpoints-filled (p image) ;FIX: TEST, REMOVE ALL REFERENCES TO
       (draw-filled-circle image (round (first p)) (round (second p)) 30 imago:+green+))
 
-;;image tests:
-;NOTE: all of this will be moved later
-(when (eq t nil) ;block comment for repl loading
-
-(defun drawpoints-filled (point-list image)
-  (dolist (p point-list)
-    (prog1 (draw-filled-circle image (first (first p)) (second (first p)) 5 imago:+red+)
-      (draw-filled-circle image (first (second p)) (second (second p)) 5 imago:+blue+))))
-
-(defun drawpoints (point-list image)
-  (dolist (p point-list)
-    (prog1 (imago:draw-circle image (first (first p)) (second (first p)) 10 imago:+red+)
-      (imago:draw-circle image (first (second p)) (second (second p)) 10 imago:+blue+))))
-
-(defun draw-straight-lines (point-list image)
-  (dolist (p point-list)
-    (imago:draw-line image (first (first p)) (second (first p))
-                     (first (second p)) (second (second p))
-                     imago:+black+)))
-;drawing lines and points test:
-(setq myimage2 (imago:make-rgb-image 300 300 imago:+white+))
-(drawpoints-filled (gen-start-points 100
-                                     (degtorad 10)
-                                     0
-                                     (list (imago:image-width myimage2)
-                                           (imago:image-height myimage2)))
-                   myimage2)
-(draw-straight-lines (gen-start-points 100
-                                     (degtorad 10)
-                                     0
-                                     (list (imago:image-width myimage2)
-                                           (imago:image-height myimage2)))
-                   myimage2)
-(imago:write-png myimage2 "~/Documents/projects/imgWaves/out.png")
-
-(defun gen-start-points-test (line-num a offset blankimg)
-  (let ((p-l (gen-start-points line-num
-                               a
-                               offset
-                               (list (imago:image-width blankimg)
-                                     (imago:image-height blankimg)))))
-    (print p-l)
-    (drawpoints-filled p-l blankimg)
-    (draw-straight-lines p-l blankimg)
-    (imago:write-png blankimg "~/Documents/projects/imgWaves/out.png")))
-
-(defun gainline-test (g image angle line-num)
-  (let* ((imgsize (list (imago:image-width image)
-                        (imago:image-height image)))
-         (line-points (gen-start-points line-num (degtorad angle) 0 imgsize)))
-  (print line-points)
-  (print "a")
-  (print (make-gain-line-linear g image (first line-points)))))
-
-(defun import-binary-image (location) ;; not using, remove
-    (defvar (imago:convert-to-binary ((imago:read-image "./test.png") 10))))
-
-;imago:invert not in quicklisp but in the imago git repo
-;probably easy to implement self where needed
-;(defvar gray-image (imago:invert (imago:convert-to-grayscale ;use something like this
-;                     (imago:read-image "~/Documents/projects/imgWaves/src/test.png"))))
-(setq gray-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/pingus.png")))
-
-(print (gray-pixel gray-image 150 150))
-
-(imago:write-png gray-image "~/Documents/projects/imgWaves/bin.png")
-(import-binary-image 1)
-
-(imago:write-png myimage2 "hello.png"); should write to current path...
-
-;(imago:do-region-pixels (myimage color x y 25 25 50 50)
-;  (setf color (imago:make-color 0 0 255 127)))
-
-;(defvar myimage (imago:read-image "~/Pictures/finn/ascent2.jpg"))
-
-;(defvar embossedimage (imago:emboss myimage :angle (* pi 0.75) :depth 1.0))
-
-;(imago:write-image embossed "~/Pictures/embossed.jpg")
-
-;PERF: TEST OF MAIN LOOP:
-(defun temp-sine-wave (g n x)
-  (+ (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
-  ;(+ (* g 20) (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
-(defun no-wave (g n x)
-  (* g 20))
-(defun sawtooth-wave (g n x) ;normalize g
-  (* g (mod x 20) 1))
-
-(defvar params-in (make-instance 'params))
-(img-waves #'temp-sine-wave params-in base-bg-image)
-
-(defvar myimage2 (imago:make-rgb-image 1920 1080 imago:+black+))
-(defvar base-bg-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/polkadots.jpg")))
-(setq base-bg-image (imago:convert-to-grayscale ;use something like this
-                     (imago:read-image "~/Documents/projects/imgWaves/src/test_i2.png")))
-(setq base-bg-image (imago:invert-gray (imago:image-pixels base-bg-image)))
-
-(imago:do-image-pixels (base-bg-image gray-col x y)
-                  (setf gray-col (imago:invert-gray gray-col)))
-
-(full-test 20 10 0 1 10 #'temp-sine-wave 0 T)
-(full-test 10 0 0 20 20 #'temp-sine-wave 2 nil)
-
-(defun full-test (num-lines a offset g-up g-down l-func stroke blur) ;do the two defvar above first in REPL
-  (let ((newimg (imago:make-rgb-image (imago:image-width base-bg-image)
-                                       (imago:image-height base-bg-image)
-                                       imago:+black+)))
-  (main-loop base-bg-image newimg num-lines a offset g-up g-down l-func stroke imago:+white+)
-  (when blur  
-    (imago:blur newimg)) ;not work ;|
-  (imago:write-png newimg "~/Documents/projects/imgWaves/bgout.png")))
-
-;silly gif test:
-(defun speeeen ()
-  (let ((outImg (imago:make-rgb-image 600 600 imago:+white+))
-        (dirname "~/Documents/projects/imgWaves/fungif/")
-        (outnum 1))
-   (loop for i from -180 to 180 by 1
-        do (prog1 (main-loop gray-image outImg 30 i 0 20 #'temp-sine-wave 1 imago:+black+)
-             (imago:write-png outImg
-                              (concatenate 'string dirname (write-to-string outnum) ".png"))
-             (setq outImg (imago:make-rgb-image 600 600 imago:+white+))
-             (incf outnum)))))
-(speeeen)
-
-)
