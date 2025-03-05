@@ -2,6 +2,8 @@
 
 ;(setq *posix-argv* (list "sbcl" "-rR" "5" "-a" "5"))
 
+;NOTE: should i add "ERROR:" to start of each error print?
+
 (defun first-is-dash? (arg); dont need to check if string type, *posix-argv* uses strings only
   "check if first char is a dash but second char is not a number"
   (and (equalp (char arg 0)
@@ -125,9 +127,11 @@
         (setf last-args-count (length (third form))))) 
     (if (= last-args-count func-arg-count)
         (coerce last-func 'function)
-        (error "Input function has an invalid number of arguments, expected: ~D, got: ~D" 
-               func-arg-count 
-               last-args-count))))
+        (progn (format T "Input function ~a has an invalid number of arguments, expected: ~D, got: ~D~%" 
+                       func-path
+                       func-arg-count 
+                       last-args-count)
+               (uiop:quit 1)))))
 
 ;;example usage:
 ;(defun arg-example (dash-arg val)

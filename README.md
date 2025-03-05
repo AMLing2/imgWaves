@@ -4,7 +4,7 @@
 Dependencies:
 - SBCL
 - Quicklisp set up
-- (optional for animations) FFMPEG\
+- (optional for animations) FFMPEG
 
 In the project's root directory, build with make:
 ```
@@ -16,10 +16,9 @@ See the -h argument for the options.
 imgwaves -h
 ```
 
-Input a b/w or grayscale image where a specified function (a sine wave by default) will be drawn in a line over the image, being flat in black regions and following the function in white or brighter regions, the image can be inverted with the -I option.\
+Input a b/w or grayscale image where a specified function (a sine wave by default) will be drawn in a line over the image, being flat in black regions and following the function in white or brighter regions.\
 The ramp options -R and -r specify how fast to ramp up the gain for the function when moving from dark to brigher pixels, set -Rr to 0 to disable ramping.\
-Colors can be changed with the --line-color and --background-color options, and the line thickness can be set with the -L option.\
-The output file can be specified with the -o option where it will overwrite the previous file. Set the output file as a .svg to create a vector graphics image. The supported output filetypes are: .png, .jpg, .pnm, .tga, .svg.\
+Set the output file as a .svg to create a vector graphics image. The supported output filetypes are: .png, .jpg, .pnm, .tga, .svg.\
 Other functions such as the ones in the **ex/** folder can be input with the -f option.\
 Example:
 ```
@@ -43,6 +42,8 @@ See the examples in the **ex/** folder.
  - High offset values which causes lines to wrap twice will have a wrong placement
 
 ### TODO:
- - interpolate, if distance between 2 points is > [input] pixels, draw a line between them
- - drawing ontop of original image
+ - interpolation or increased density of points
+ - drawing on top of original image
  - no overlapping (works somewhat with vector graphics)
+ - testing on other distributions of CL
+ - possibly a GUI port in the future

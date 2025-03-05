@@ -4,8 +4,12 @@
 (load #P"src/svgout.lisp")
 
 (defconstant +arg-count+ 3) ;number of arguments for the input function (ex below)
+(defconstant +anim-arg-count+ 2) ;number of arguments for the animation function
 (defun base-sine-wave (g n x)
   (+ (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
+
+(defvar animate-p nil)
+(defvar animation-function nil) ; change to part of params struct?
 
 (defstruct params
   (g-up 10.0 :type float)
@@ -35,7 +39,8 @@
   (format t "  -c, --line-color <hex>       Set the line color in the format \"RRGGBB\"~%")
   (format t "  -L, --line-thickness <integer> Set the line thickness in pixels.~%")
   (format t "  -I                           Invert the image.~%")
-  (format t "  -f, --function <filename>    Set a custom line function from a lisp program.~%")
+  (format t "  -f, --function <.lisp file>  Set a custom line function from a lisp program.~%")
+  (format t "  -A, --animate <.lisp file> Use a lisp function to modify the params object during runtime.~%")
   (format t "  -h, --help                   Display this help message.~%")
   (format t "Example:~%")
   (format t "  imgwaves base.png -R 5.0 -a 45 -n 100 -o out.png~%"))
@@ -98,7 +103,7 @@
     ((or (string= d-arg "r")
          (string= d-arg "ramp-down")) (setf (slot-value obj 'g-down) (stof val)))
 
-    ;; Set the angle of lines ('a' short, 'angle' long)
+    ;; Set the angle in degrees of lines ('a' short, 'angle' long)
     ((or (string= d-arg "a")
          (string= d-arg "angle")) (setf (slot-value obj 'angle) (stof val)))
 
@@ -116,6 +121,12 @@
          (string= d-arg "function")) 
      (setf (slot-value obj 'in-func) 
            (get-wave-func val +arg-count+)))
+
+    ;; Set the animation filename ('A' short, 'animate' long)
+    ((or (string= d-arg "A")
+         (string= d-arg "animate")) 
+     (progn (setf animate-p T)
+            (setf animation-function (get-wave-func val +anim-arg-count+))))
 
     ;; Set the offset of lines ('t' short, 'line-offset' long)
     ((or (string= d-arg "t")
@@ -306,7 +317,7 @@
                           (mod (- new-y y-min) (- (- y-max y-min)))))))
     (list new-x new-y)))
 
-(defun gen-start-points (line-num a offset imgsize fix-gap-p) ;FIX: issue at 271+ angles
+(defun gen-start-points (line-num a offset imgsize fix-gap-p)
   (let* ((imgsizefixed (mapAdd -1 imgsize))
          (p (init-line-points a imgsizefixed))
          (dist-x (/ (- (p-pos "x" 1 p)
@@ -500,7 +511,6 @@
                                         offset 
                                         imgsize
                                         fix-gap-p)))
-    (print line-points)
     (if vectorize
         (make-vector-loop out-file line-points line-func g-up g-down base-img angle
                           line-thickness line-color bg-color)
@@ -546,6 +556,26 @@
                (make-vector-p (slot-value param-obj 'filename))
                (slot-value param-obj 'fix-gap))))
 
+(defun imgwaves-anim (params-obj anim-func base-img) ;TODO: continue
+  "Run a function in a loop to modify params-obj then generate an image/frame with changed parameters"
+  (let ((run-count 0)
+        (img-filename "0")
+        (save-filepath (merge-pathnames (pathname "img_anim/")
+                                        (uiop:getcwd))))
+  (uiop:ensure-pathname save-filepath :ensure-directories-exist T) ;create ./img_anim/ directory
+  (loop until
+        (eq nil
+            (funcall anim-func params-obj run-count))
+  do (progn 
+       (setf (slot-value params-obj 'filename) 
+             (merge-pathnames (pathname (concatenate 'string img-filename ".png")) ;a bit lazy?
+                              save-filepath))
+       (incf run-count)
+       (setf img-filename (write-to-string run-count))
+       (img-waves (slot-value params-obj 'in-func)
+                params-obj
+                base-img)))))
+
 (defun start-program ()
   "main start function for sbcl, read args and begin"
   (let ((prog-params (make-params))
@@ -554,8 +584,13 @@
       (lambda (arg val) 
         (fill-from-args prog-params arg val)) ; error handling done here
       *POSIX-ARGV*)
-    (img-waves (slot-value prog-params 'in-func)
+    (if animate-p 
+        (imgwaves-anim prog-params
+                       animation-function
+                       (imago:convert-to-grayscale
+                         (imago:read-image input-img)))
+        (img-waves (slot-value prog-params 'in-func) ;run normally
                prog-params
                (imago:convert-to-grayscale
-                 (imago:read-image input-img)))))
+                 (imago:read-image input-img))))))
 
