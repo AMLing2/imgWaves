@@ -556,8 +556,8 @@
                (make-vector-p (slot-value param-obj 'filename))
                (slot-value param-obj 'fix-gap))))
 
-(defun imgwaves-anim (params-obj anim-func base-img) ;TODO: continue
-  "Run a function in a loop to modify params-obj then generate an image/frame with changed parameters"
+(defun imgwaves-anim (params-obj anim-func base-img) ;TODO: test
+  "Run a function in a loop to modify params-obj then generate an image/frame with new parameters"
   (let ((run-count 0)
         (img-filename "0")
         (save-filepath (merge-pathnames (pathname "img_anim/")
