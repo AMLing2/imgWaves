@@ -37,6 +37,7 @@ Where:
 - *line-number* represents which of the lines is currently being drawn
 - *x* is the current value across the line's local x axis\
 
+The entire .lisp file is loaded allowing constants and other functions to be defined, while the last defined function will be used.
 See the examples in the **ex/** folder.
 
 ##### Creating animations

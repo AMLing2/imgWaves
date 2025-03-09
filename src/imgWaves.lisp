@@ -559,7 +559,7 @@
 (defun imgwaves-anim (params-obj anim-func base-img) ;TODO: test
   "Run a function in a loop to modify params-obj then generate an image/frame with new parameters"
   (let ((run-count 0)
-        (img-filename "0")
+        (img-filename "00000")
         (save-filepath (merge-pathnames (pathname "img_anim/")
                                         (uiop:getcwd))))
   (uiop:ensure-pathname save-filepath :ensure-directories-exist T) ;create ./img_anim/ directory
@@ -571,7 +571,7 @@
              (merge-pathnames (pathname (concatenate 'string img-filename ".png")) ;a bit lazy?
                               save-filepath))
        (incf run-count)
-       (setf img-filename (write-to-string run-count))
+       (setf img-filename (format nil "~5,'0d" run-count))
        (img-waves (slot-value params-obj 'in-func)
                 params-obj
                 base-img)))))
