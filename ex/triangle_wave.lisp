@@ -1,6 +1,6 @@
 (defconstant +amplitude+ 20)
-(defconstant +raise+ 10)
-(defconstant +period+ 40)
+(defconstant +raise+ 15)
+(defconstant +period+ 22)
 
 (defun triangle (g n x)
   (declare (ignorable n))

@@ -1,6 +1,6 @@
 (defconstant +amplitude+ 10)
-(defconstant +raise+ 0)
-(defconstant +wavelength+ 3.3)
+(defconstant +raise+ 20)
+(defconstant +wavelength+ 4)
 
 (defun sine-wave (g n x)
   (declare (ignore n))

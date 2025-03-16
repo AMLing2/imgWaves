@@ -1,3 +1,4 @@
+;;; this works best with vector graphics
 (defconstant +amplitude+ 10)
 (defconstant +raise+ 20)
 (defconstant +wavelength+ 10)

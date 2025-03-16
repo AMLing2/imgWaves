@@ -6,7 +6,7 @@
 (defconstant +arg-count+ 3) ;number of arguments for the input function (ex below)
 (defconstant +anim-arg-count+ 2) ;number of arguments for the animation function
 (defun base-sine-wave (g n x)
-  (+ (* g (+ 1 (* n 0)) 10 (sin (* x 0.3)))))
+  (* g (+ 1 (* n 0)) 10 (sin (* x 0.3))))
 
 (defvar animate-p nil)
 (defvar animation-function nil) ; change to part of params struct?
@@ -190,8 +190,8 @@
 ;    imgwaves /path/image
 
 (defmacro p-pos (xy-str n p-list)
-  (cond ((equalp xy-str "x") (list 'first  (list 'nth n p-list)))
-        ((equalp xy-str "y") (list 'second (list 'nth n p-list)))
+  (cond ((eq xy-str :x) (list 'first  (list 'nth n p-list)))
+        ((eq xy-str :y) (list 'second (list 'nth n p-list)))
         (t (list 'first (list 'first p-list)))))
 
 (defun flipPoints (p-l)
@@ -278,10 +278,10 @@
         (linepoints-r (first l-cxcy) (second l-cxcy) (clamp-ang-rad (+ a pi)) imgsize)))
 
 (defun dist-between-points (p)
-  (sqrt (+ (expt (- (p-pos "x" 1 p)
-                    (p-pos "x" 0 p)) 2)
-           (expt (- (p-pos "y" 1 p)
-                    (p-pos "y" 0 p)) 2))))
+  (sqrt (+ (expt (- (p-pos :x 1 p)
+                    (p-pos :x 0 p)) 2)
+           (expt (- (p-pos :y 1 p)
+                    (p-pos :y 0 p)) 2))))
 
 (defun mapAdd (num apply-list)
   (map 'list (lambda (x) (+ x num)) apply-list))
@@ -297,49 +297,49 @@
   "Add and return offset to an x or y value c and wrap if outside of image"
   ;(print (list "limits:" limits1))
   ;replace with loop or move to gen-start-points? same calcs are done for every line its very inefficient
-  (let ((x-min (min (p-pos "x" 0 limits1) (p-pos "x" 1 limits1))) 
-        (x-max (max (p-pos "x" 0 limits1) (p-pos "x" 1 limits1)))
-        (y-min (min (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)))
-        (y-max (max (p-pos "y" 0 limits1) (p-pos "y" 1 limits1)))
+  (let ((x-min (min (p-pos :x 0 limits1) (p-pos :x 1 limits1))) 
+        (x-max (max (p-pos :x 0 limits1) (p-pos :x 1 limits1)))
+        (y-min (min (p-pos :y 0 limits1) (p-pos :y 1 limits1)))
+        (y-max (max (p-pos :y 0 limits1) (p-pos :y 1 limits1)))
         (new-x (+ (first l-cxcy)  (* offset (sin a))))
         (new-y (+ (second l-cxcy) (* offset (cos a)))))
     ;(print (list "x-min" x-min "x-max" x-max "y-min" y-min "y-max" y-max "old-x" (first l-cxcy) "new-x" new-x "old-y" (second l-cxcy) "new-y" new-y))
-    (cond ((>= new-x x-max) (setq new-x (+ (p-pos "x" 0 limits1) ;FIX: this val breaks at double wrap
+    (cond ((>= new-x x-max) (setq new-x (+ (p-pos :x 0 limits1) ;FIX: this val breaks at double wrap
                                            (mod new-x x-max))))
           ((<= new-x x-min)
-           (setq new-x (+ (p-pos "x" 0 limits1)
+           (setq new-x (+ (p-pos :x 0 limits1)
                           (mod (- new-x x-min) (- (- x-max x-min)))))))
 
-    (cond ((>= new-y y-max) (setq new-y (+ (p-pos "y" 0 limits1) 
+    (cond ((>= new-y y-max) (setq new-y (+ (p-pos :y 0 limits1) 
                                            (mod new-y y-max))))
           ((<= new-y y-min) 
-           (setq new-y (+ (p-pos "y" 0 limits1) ;correct?
+           (setq new-y (+ (p-pos :y 0 limits1) ;correct?
                           (mod (- new-y y-min) (- (- y-max y-min)))))))
     (list new-x new-y)))
 
 (defun gen-start-points (line-num a offset imgsize fix-gap-p)
   (let* ((imgsizefixed (mapAdd -1 imgsize))
          (p (init-line-points a imgsizefixed))
-         (dist-x (/ (- (p-pos "x" 1 p)
-                   (p-pos "x" 0 p)) (+ line-num 1)))
-         (dist-y (/ (- (p-pos "y" 1 p)
-                   (p-pos "y" 0 p)) (+ line-num 1))))
+         (dist-x (/ (- (p-pos :x 1 p)
+                   (p-pos :x 0 p)) (+ line-num 1)))
+         (dist-y (/ (- (p-pos :y 1 p)
+                   (p-pos :y 0 p)) (+ line-num 1))))
     (if (= offset 0)
         (loop for l from 1 to line-num by 1
               collect (start-end-points2
                         (list (+ (* dist-x l) ;cx
-                                 (p-pos "x" 0 p))
+                                 (p-pos :x 0 p))
                               (+ (* dist-y l) ;cy
-                                 (p-pos "y" 0 p)))
+                                 (p-pos :y 0 p)))
                         a
                         imgsizefixed))
         (loop for l from 1 to (+ line-num (if fix-gap-p 1 0)) by 1
               collect (start-end-points2
                         (add-offset offset a p
                                     (list (+ (* dist-x l) ;cx
-                                             (p-pos "x" 0 p))
+                                             (p-pos :x 0 p))
                                           (+ (* dist-y l) ;cy
-                                             (p-pos "y" 0 p))))
+                                             (p-pos :y 0 p))))
                                     a
                                     imgsizefixed)))))
 
@@ -381,10 +381,10 @@
 (defun make-gain-line-linear (g-up g-down image line-point) ; rename in the future
   (let ((g-list nil))                                       ; for both linear and smooth
     (imago:do-line-pixels (image color x y ;if 300x300 image then 0->299
-                                 (p-pos "x" 0 line-point)  ;x1
-                                 (p-pos "y" 0 line-point)  ;y1
-                                 (p-pos "x" 1 line-point)  ;x2
-                                 (p-pos "y" 1 line-point)) ;y2
+                                 (p-pos :x 0 line-point)  ;x1
+                                 (p-pos :y 0 line-point)  ;y1
+                                 (p-pos :x 1 line-point)  ;x2
+                                 (p-pos :y 1 line-point)) ;y2
       (push (logand color #x00FF) g-list)) ; ANDed with #x00FF to get grayscale
     (when (or (> g-up 0.0)
               (> g-down 0.0))
@@ -445,10 +445,10 @@
                              line-thickness line-color)
   (let ((i 0))
     (imago:do-line-pixels (image color x y 
-                                 (p-pos "x" 0 line-points);x1
-                                 (p-pos "y" 0 line-points);y1
-                                 (p-pos "x" 1 line-points)
-                                 (p-pos "y" 1 line-points))
+                                 (p-pos :x 0 line-points);x1
+                                 (p-pos :y 0 line-points);y1
+                                 (p-pos :x 1 line-points)
+                                 (p-pos :y 1 line-points))
       (prog1
           (draw-filled-circle image
                               (x-func-add x (nth i relative-shape-line) angle)
@@ -462,10 +462,10 @@
   (let ((i 0)
         (p-list nil))
     (imago:do-line-pixels (image color x y 
-                                 (p-pos "x" 0 line-points);x1
-                                 (p-pos "y" 0 line-points);y1
-                                 (p-pos "x" 1 line-points)
-                                 (p-pos "y" 1 line-points))
+                                 (p-pos :x 0 line-points);x1
+                                 (p-pos :y 0 line-points);y1
+                                 (p-pos :x 1 line-points)
+                                 (p-pos :y 1 line-points))
       (prog1
           (push (list
                   (x-func-add x (nth i relative-shape-line) angle)
@@ -556,7 +556,7 @@
                (make-vector-p (slot-value param-obj 'filename))
                (slot-value param-obj 'fix-gap))))
 
-(defun imgwaves-anim (params-obj anim-func base-img) ;TODO: test
+(defun imgwaves-anim (params-obj anim-func base-img)
   "Run a function in a loop to modify params-obj then generate an image/frame with new parameters"
   (let ((run-count 0)
         (img-filename "00000")

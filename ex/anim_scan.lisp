@@ -13,8 +13,8 @@
 ;;   (in-func #'base-sine-wave :type function)
 ;;   (filename #p"./out.png" :type pathname))
 
-(defconstant +scan-speed+ 20)
-(defconstant +image-height+ 1080)
+(defconstant +scan-speed+ 1)
+(defconstant +image-height+ 32)
 
 (defun anim-scan (params-obj run-count)
   (incf (slot-value params-obj 'offset) +scan-speed+)
