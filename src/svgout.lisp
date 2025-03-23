@@ -30,5 +30,5 @@ xmlns=\"http://www.w3.org/2000/svg\">
   (format filestream "~%</svg>~%"))
 
 (defun add-line-to-svg (filestream line-list)
-  (format filestream "<polyline class=\"l-style\" points=\"~{~{~a~^,~}~^ ~}\"/>~%"
+  (format filestream "<polyline class=\"l-style\" points=\"~{~{~3$~^,~}~^ ~}\"/>~%"
           line-list))

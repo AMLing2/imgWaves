@@ -1,5 +1,4 @@
 (ql:quickload "IMAGO")
-;(load #P"~/Documents/projects/imgWaves/src/arg.lisp")
 (load #P"src/arg.lisp")
 (load #P"src/svgout.lisp")
 
@@ -251,7 +250,7 @@
                    (- (/ (- (+ (* b cx) h) (* b w) (/ (* cy b) a))
                          (- 1 (/ b a)))))))))
 
-(defun linepoints-r (cx cy a imgsize) ;;a rounded version of original function
+(defun linepoints (cx cy a imgsize)
   (let* ((xval)
          (y (if (on-right-side? a)
                (prog1
@@ -263,19 +262,33 @@
     (cond
       ((and (<= y (nth 1 imgsize))
             (>= y 0.0)) 
-       (list (round xval) (round y))) ;left / right
+       (list xval y)) ;left / right
       ((> y (nth 1 imgsize)) 
-        (list (round (line-x cx cy a (nth 1 imgsize))) (round (nth 1 imgsize)))) ; bottom
+        (list (line-x cx cy a (nth 1 imgsize)) (nth 1 imgsize))) ; bottom
       ((< y 0.0) 
-       (list (round (line-x cx cy a 0.0)) 0))))) ;top
+       (list (line-x cx cy a 0.0)) 0.0)))) ;top
 
 (defun init-line-points (a imgsize)
   (list (linepoints-init a imgsize)
         (linepoints-init (+ a pi) imgsize)))
 
-(defun start-end-points2 (l-cxcy a imgsize) ;with cx cy
-  (list (linepoints-r (first l-cxcy) (second l-cxcy) a imgsize)
-        (linepoints-r (first l-cxcy) (second l-cxcy) (clamp-ang-rad (+ a pi)) imgsize)))
+(defun apply-all (l func)
+  "apply a function to all values in a tree without modifying structure"
+  (if (not (listp l))
+      (funcall func l)
+      (loop for i in l 
+            collect (apply-all i func))))
+
+(defun start-end-points-r (l-cxcy a imgsize) ;with cx cy
+  "start and end points of lines, rounded"
+  (apply-all (list (linepoints (first l-cxcy) (second l-cxcy) a imgsize)
+                   (linepoints (first l-cxcy) (second l-cxcy) (clamp-ang-rad (+ a pi)) imgsize))
+             (lambda (x) (round x))))
+
+(defun start-end-points-f (l-cxcy a imgsize) ;with cx cy
+  "start and end points of lines, floating point"
+  (list (linepoints (first l-cxcy) (second l-cxcy) a imgsize)
+        (linepoints (first l-cxcy) (second l-cxcy) (clamp-ang-rad (+ a pi)) imgsize)))
 
 (defun dist-between-points (p)
   (sqrt (+ (expt (- (p-pos :x 1 p)
@@ -283,7 +296,7 @@
            (expt (- (p-pos :y 1 p)
                     (p-pos :y 0 p)) 2))))
 
-(defun mapAdd (num apply-list)
+(defun mapAdd (num apply-list) ; remove and use apply-list only?
   (map 'list (lambda (x) (+ x num)) apply-list))
 
 ; taken from https://stackoverflow.com/a/14416133
@@ -326,7 +339,7 @@
                    (p-pos :y 0 p)) (+ line-num 1))))
     (if (= offset 0)
         (loop for l from 1 to line-num by 1
-              collect (start-end-points2
+              collect (start-end-points-r
                         (list (+ (* dist-x l) ;cx
                                  (p-pos :x 0 p))
                               (+ (* dist-y l) ;cy
@@ -334,7 +347,7 @@
                         a
                         imgsizefixed))
         (loop for l from 1 to (+ line-num (if fix-gap-p 1 0)) by 1
-              collect (start-end-points2
+              collect (start-end-points-r
                         (add-offset offset a p
                                     (list (+ (* dist-x l) ;cx
                                              (p-pos :x 0 p))
@@ -437,9 +450,9 @@
   (logand (imago:image-pixel image x y) #x00FF))
 
 (defun x-func-add (old-x func-val angle) ;func-val acts as len for a new vector
-  (round (+ old-x (* func-val (- (sin angle))))))
+  (+ old-x (* func-val (- (sin angle)))))
 (defun y-func-add (old-y func-val angle)
-  (round (+ old-y (* func-val (- (cos angle))))))
+  (+ old-y (* func-val (- (cos angle)))))
 
 (defun draw-func-line (image line-points relative-shape-line angle
                              line-thickness line-color)
@@ -451,14 +464,14 @@
                                  (p-pos :y 1 line-points))
       (prog1
           (draw-filled-circle image
-                              (x-func-add x (nth i relative-shape-line) angle)
-                              (y-func-add y (nth i relative-shape-line) angle)
+                              (round (x-func-add x (nth i relative-shape-line) angle))
+                              (round (y-func-add y (nth i relative-shape-line) angle))
                               line-thickness
                               line-color)
         (incf i)))))
 
 (defun points-func-line (image line-points relative-shape-line angle)
-  "Return list of points of function going over image"
+  "Return list of points of function going over image for vector graphics"
   (let ((i 0)
         (p-list nil))
     (imago:do-line-pixels (image color x y 
